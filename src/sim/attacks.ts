@@ -233,7 +233,13 @@ export async function runAttack(kind: AttackKind, hub?: Hub, memory?: { knownBad
     run.stage("waiting", `Attack finished. Waiting for the swarm to catch ${target}`);
     await awaitVerdictAndGuard(run, target);
   } catch (e: any) {
-    run.stage("error", String(e?.message ?? e).slice(0, 200));
+    const msg = String(e?.message ?? e);
+    run.stage(
+      "error",
+      /429|rate limit/i.test(msg)
+        ? "NEAR's free public RPC is rate-limiting the demo right now. Give it a minute and release the scam again."
+        : msg.slice(0, 200),
+    );
   }
 }
 

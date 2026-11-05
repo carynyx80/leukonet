@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { API } from "./api";
 
 export interface Meta {
@@ -136,9 +136,11 @@ export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void] {
     };
   }, []);
 
-  const subscribe = (fn: (e: Ev) => void) => {
+  const subscribe = useCallback((fn: (e: Ev) => void) => {
     listeners.current.add(fn);
-    return () => listeners.current.delete(fn);
-  };
+    return () => {
+      listeners.current.delete(fn);
+    };
+  }, []);
   return [s, subscribe];
 }
