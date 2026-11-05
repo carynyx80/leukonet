@@ -16,9 +16,10 @@ interface Sweep {
 async function asSweep(tx: Tx, chain: ChainView, share: number): Promise<Sweep | null> {
   if (tx.signer === tx.receiver) return null;
   const amount = tx.actions.reduce((s, a) => s + (a.kind === "Transfer" ? a.deposit ?? 0n : 0n), 0n);
-  if (amount === 0n) return null;
-  // The transfer is debited when the transaction is included, so this is the post-sweep balance.
-  const remaining = await chain.balance(tx.signer);
+  // Below 0.01 NEAR nothing worth stealing moved; skip without any lookup.
+  if (amount < 10n ** 22n) return null;
+  // The transfer is debited when the transaction is processed; neardata gives us that balance directly.
+  const remaining = tx.signerBalanceAfter ?? (await chain.balance(tx.signer));
   if (remaining === null) return null;
   const total = amount + remaining;
   if (Number((amount * 1000n) / total) / 1000 < share) return null;

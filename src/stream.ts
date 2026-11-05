@@ -33,6 +33,8 @@ export interface Tx {
   actions: TxAction[];
   height: number;
   timestampMs: number;
+  /** Signer's balance right after the transaction was processed (from neardata state changes). */
+  signerBalanceAfter?: bigint;
 }
 
 export interface BlockEvent {
@@ -103,7 +105,11 @@ async function fetchBlockRpc(height: number, rpcUrl?: string): Promise<Omit<Bloc
 }
 
 async function fetchBlock(height: number, dataUrl: string, rpcUrl?: string): Promise<Omit<BlockEvent, "lag"> | null> {
-  const res = await fetch(`${dataUrl}/v0/block/${height}`);
+  let res = await fetch(`${dataUrl}/v0/block/${height}`);
+  for (let i = 0; res.status === 429 && i < 2; i++) {
+    await sleep(500 * (i + 1));
+    res = await fetch(`${dataUrl}/v0/block/${height}`);
+  }
   if (res.status === 429) return fetchBlockRpc(height, rpcUrl);
   if (!res.ok) {
     const e = new Error(`neardata ${res.status}`);
@@ -114,6 +120,15 @@ async function fetchBlock(height: number, dataUrl: string, rpcUrl?: string): Pro
   // Heights can be skipped by the chain; neardata returns null for those.
   if (!data) return null;
   const timestampMs = Math.floor(Number(data.block.header.timestamp_nanosec) / 1e6);
+  // tx hash + account -> balance after the transaction debited it
+  const after = new Map<string, bigint>();
+  for (const shard of data.shards ?? []) {
+    for (const sc of shard.state_changes ?? []) {
+      if (sc.type === "account_update" && sc.cause?.type === "transaction_processing") {
+        after.set(`${sc.cause.tx_hash}|${sc.change.account_id}`, BigInt(sc.change.amount));
+      }
+    }
+  }
   const txs: Tx[] = [];
   for (const shard of data.shards ?? []) {
     for (const entry of shard.chunk?.transactions ?? []) {
@@ -126,6 +141,7 @@ async function fetchBlock(height: number, dataUrl: string, rpcUrl?: string): Pro
         actions: (t.actions ?? []).map(parseAction),
         height,
         timestampMs,
+        signerBalanceAfter: after.get(`${t.hash}|${t.signer_id}`),
       });
     }
   }
@@ -136,6 +152,18 @@ async function fetchBlock(height: number, dataUrl: string, rpcUrl?: string): Pro
  * Follows the chain head and emits every block with its transactions, in order.
  * Fetches a few heights in parallel to keep up with ~1s block times.
  */
+/** Chain head from neardata's redirect, so following the chain costs no RPC calls. */
+async function headHeight(dataUrl: string, rpcUrl?: string): Promise<number> {
+  try {
+    const res = await fetch(`${dataUrl}/v0/last_block/final`, { redirect: "manual" });
+    const m = (res.headers.get("location") ?? "").match(/(\d+)$/);
+    if (m) return Number(m[1]);
+  } catch {
+    /* fall through */
+  }
+  return (await rpc("block", { finality: "final" }, rpcUrl)).header.height;
+}
+
 export class BlockStream extends EventEmitter {
   private next = 0;
   private running = false;
@@ -148,8 +176,7 @@ export class BlockStream extends EventEmitter {
 
   async start() {
     this.running = true;
-    const head = await rpc("block", { finality: "final" }, this.opts.rpcUrl);
-    this.next = this.opts.startHeight ?? head.header.height;
+    this.next = this.opts.startHeight ?? (await headHeight(this.opts.dataUrl ?? config.dataUrl, this.opts.rpcUrl));
     this.loop().catch((e) => this.emit("error", e));
   }
 
@@ -164,7 +191,7 @@ export class BlockStream extends EventEmitter {
     while (this.running) {
       let head: number;
       try {
-        head = (await rpc("block", { finality: "final" }, this.opts.rpcUrl)).header.height;
+        head = await headHeight(this.opts.dataUrl ?? config.dataUrl, this.opts.rpcUrl);
       } catch (e) {
         this.emit("warn", `head fetch failed: ${(e as Error).message}`);
         await sleep(pollMs * 2);
@@ -176,7 +203,9 @@ export class BlockStream extends EventEmitter {
       }
       while (this.running && this.next <= head) {
         const heights: number[] = [];
-        for (let h = this.next; h <= head && heights.length < parallel; h++) heights.push(h);
+        // Fetch more at once only when catching up, to stay under the free rate limits.
+        const width = head - this.next > 3 ? parallel + 2 : Math.min(parallel, 2);
+        for (let h = this.next; h <= head && heights.length < width; h++) heights.push(h);
         const results = await Promise.allSettled(heights.map((h) => fetchBlock(h, this.opts.dataUrl ?? config.dataUrl, this.opts.rpcUrl)));
         // Emit in order and stop at the first failure: a block is retried, never dropped.
         let failed: any = null;

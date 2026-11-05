@@ -22,6 +22,8 @@ export interface DemoState {
   accounts: string[];
 }
 
+const reportsOpen = (r: any[]) => r?.some((x) => x.status === "Open");
+
 export function readDemoState(): DemoState {
   try {
     return JSON.parse(fs.readFileSync(DEMO_FILE, "utf8"));
@@ -89,6 +91,7 @@ export class Swarm {
   private queue: BlockEvent[] = [];
   private busy = false;
   private finalizing = new Set<number>();
+  private pollCount = 0;
   private stream: BlockStream;
   private chain;
 
@@ -204,12 +207,14 @@ export class Swarm {
   private pollRegistry() {
     const tick = async () => {
       try {
-        const [reports, sentinels, stats, verdicts, cfg] = await Promise.all([
-          view(config.registry, "get_reports", { from_index: 0, limit: 40 }),
-          view(config.registry, "get_sentinels"),
-          view(config.registry, "get_stats"),
-          view(config.registry, "get_verdicts", { from_index: 0, limit: 100 }),
-          this.hub.state.config ? Promise.resolve(this.hub.state.config) : view(config.registry, "get_config"),
+        // Reports drive voting, so they are polled fast; the rest changes rarely.
+        const slow = this.pollCount++ % 5 === 0;
+        const [reports, stats, sentinels, verdicts, cfg] = await Promise.all([
+          view(config.registry, "get_reports", { from_index: 0, limit: 20 }),
+          slow ? view(config.registry, "get_stats") : this.hub.state.stats,
+          slow ? view(config.registry, "get_sentinels") : this.hub.state.sentinels,
+          slow ? view(config.registry, "get_verdicts", { from_index: 0, limit: 100 }) : this.hub.state.verdicts,
+          this.hub.state.config ?? view(config.registry, "get_config"),
         ]);
         this.hub.state = { reports, sentinels, stats, verdicts, config: cfg };
         this.hub.emit("state", this.hub.state);
@@ -241,7 +246,7 @@ export class Swarm {
       } catch (e: any) {
         this.hub.log(`registry poll failed: ${e.message}`, "warn");
       }
-      setTimeout(tick, 1500);
+      setTimeout(tick, (reportsOpen(this.hub.state.reports) ? 1500 : 3000));
     };
     void tick();
   }

@@ -4,3 +4,5 @@ node_modules/
 target/
 dist/
 *.log
+data/
+web/dist/

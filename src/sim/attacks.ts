@@ -53,8 +53,21 @@ async function subAccount(label: string, amount: bigint, keep = false): Promise<
   );
   saveKey(`sim-${label}`, { accountId: id, privateKey: kp.toString() });
   addDemoAccounts(id);
+  await waitForKey(id, kp.getPublicKey().toString());
   if (!keep) cleanup.push({ id: `sim-${label}`, at: Date.now() + 3 * 60_000 });
   return accountFromKey(id, kp.toString());
+}
+
+/** New accounts take a moment to be visible to every RPC node; signing earlier fails. */
+async function waitForKey(accountId: string, publicKey: string) {
+  for (let i = 0; i < 20; i++) {
+    try {
+      await rpc("query", { request_type: "view_access_key", finality: "optimistic", account_id: accountId, public_key: publicKey });
+      return;
+    } catch {
+      await sleep(500);
+    }
+  }
 }
 
 /** Waits for the swarm's verdict, then shows a guarded agent refusing to pay. */
@@ -263,4 +276,3 @@ export async function ensureProtectedName(): Promise<string> {
 }
 
 void view;
-void rpc;
