@@ -64,6 +64,14 @@ function json(res: http.ServerResponse, status: number, body: unknown) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    });
+    return res.end();
+  }
   try {
     if (url.pathname === "/api/events") {
       res.writeHead(200, {
@@ -139,4 +147,4 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(config.port, () => hub.log(`Leukonet threat map on http://localhost:${config.port}`));
+server.listen(config.port, "0.0.0.0", () => hub.log(`Leukonet threat map on http://localhost:${config.port}`));

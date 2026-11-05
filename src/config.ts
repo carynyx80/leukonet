@@ -34,14 +34,28 @@ export interface StoredKey {
   privateKey: string;
 }
 
+/**
+ * On a host without a .keys/ folder (Railway), keys come from LEUKONET_KEYS:
+ * base64 of {"<name>": {"accountId": "...", "privateKey": "..."}}. Written by `npm run export-env`.
+ */
+const envKeys: Record<string, StoredKey> = (() => {
+  try {
+    return process.env.LEUKONET_KEYS ? JSON.parse(Buffer.from(process.env.LEUKONET_KEYS, "base64").toString()) : {};
+  } catch {
+    console.warn("LEUKONET_KEYS is set but could not be decoded");
+    return {};
+  }
+})();
+
 export function loadKey(name: string): StoredKey {
+  if (envKeys[name] && !fs.existsSync(path.join(KEY_DIR, `${name}.json`))) return envKeys[name];
   const file = path.join(KEY_DIR, `${name}.json`);
   if (!fs.existsSync(file)) throw new Error(`Missing key file ${file}. Run "npm run setup" first.`);
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
 export function hasKey(name: string): boolean {
-  return fs.existsSync(path.join(KEY_DIR, `${name}.json`));
+  return !!envKeys[name] || fs.existsSync(path.join(KEY_DIR, `${name}.json`));
 }
 
 export function saveKey(name: string, key: StoredKey) {

@@ -28,7 +28,9 @@ export function readDemoState(): DemoState {
   try {
     return JSON.parse(fs.readFileSync(DEMO_FILE, "utf8"));
   } catch {
-    return { protected: [], accounts: [] };
+    // Fresh host: start from LEUKONET_PROTECTED (comma-separated), set by `npm run export-env`.
+    const prot = (process.env.LEUKONET_PROTECTED ?? "").split(",").filter(Boolean);
+    return { protected: prot, accounts: [...prot] };
   }
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSwarm, type Ev } from "./useSwarm";
 import { ThreatMap } from "./ThreatMap";
+import { API } from "./api";
 
 const fmtNear = (y: string | number | bigint, d = 3) => (Number(BigInt(String(y)) / 10n ** 18n) / 1e6).toFixed(d);
 const time = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
@@ -155,7 +156,7 @@ function AttackConsole({ s, txUrl }: { s: ReturnType<typeof useSwarm>[0]; txUrl:
   const meta = s.meta;
   const launch = async (kind: string) => {
     setErr(null);
-    const res = await fetch(`/api/attack/${kind}`, { method: "POST" });
+    const res = await fetch(`${API}/api/attack/${kind}`, { method: "POST" });
     if (!res.ok) setErr((await res.json()).error ?? "Could not start the attack");
   };
   const blocked = [...s.attack].reverse().find((e) => e.stage === "guard_blocked");
@@ -395,7 +396,7 @@ function Checker() {
     if (!id.trim()) return;
     setBusy(true);
     try {
-      const r = await fetch(`/api/check/${encodeURIComponent(id.trim().toLowerCase())}`);
+      const r = await fetch(`${API}/api/check/${encodeURIComponent(id.trim().toLowerCase())}`);
       setRes(await r.json());
     } catch {
       setRes({ error: "Could not reach the registry" });

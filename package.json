@@ -25,7 +25,8 @@
     "test": "cd contracts/registry && cargo test && cd ../.. && tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "dev:web": "vite web",
-    "build:web": "vite build web"
+    "build:web": "vite build web",
+    "export-env": "tsx src/scripts/export-env.ts"
   },
   "devDependencies": {
     "@types/react": "^18.3.31",

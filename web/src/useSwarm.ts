@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { API } from "./api";
 
 export interface Meta {
   registry: string;
@@ -95,7 +96,7 @@ export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void] {
 
     const boot = async () => {
       try {
-        const res = await fetch("/api/state");
+        const res = await fetch(`${API}/api/state`);
         const snap = await res.json();
         set((prev) => {
           let next: SwarmState = {
@@ -115,7 +116,7 @@ export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void] {
         /* server not up yet; EventSource will retry */
       }
       if (stopped) return;
-      es = new EventSource("/api/events");
+      es = new EventSource(`${API}/api/events`);
       es.onopen = () => set((p) => ({ ...p, connected: true }));
       es.onerror = () => set((p) => ({ ...p, connected: false }));
       es.addEventListener("hub", (m) => {
