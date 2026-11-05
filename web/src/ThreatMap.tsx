@@ -292,7 +292,8 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
           ctx.stroke();
           ctx.lineWidth = 1;
         }
-        const left = x < cx;
+        // On narrow screens labels point inward so they are never clipped at the edge.
+        const left = narrow ? x > cx : x < cx;
         const lx = x + (left ? -rad - 8 : rad + 8);
         ctx.textAlign = left ? "right" : "left";
         ctx.font = "500 11px 'JetBrains Mono', monospace";
