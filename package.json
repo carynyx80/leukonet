@@ -1,0 +1,30 @@
+{
+  "name": "leukonet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "A swarm of AI sentinel agents that catches scams on NEAR in real time and publishes staked verdicts to an onchain registry.",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@types/node": "^26.6.6",
+    "dotenv": "^18.0.9",
+    "near-api-js": "^7.4.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  },
+  "scripts": {
+    "setup": "tsx src/scripts/setup.ts",
+    "start": "tsx src/main.ts",
+    "deploy": "tsx src/scripts/deploy.ts",
+    "attack": "tsx src/sim/cli.ts",
+    "check": "tsx src/sdk/cli.ts",
+    "example:guarded-agent": "tsx examples/guarded-agent.ts",
+    "test": "cd contracts/registry && cargo test && cd ../.. && tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "dev:web": "vite web",
+    "build:web": "vite build web"
+  }
+}

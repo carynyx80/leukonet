@@ -1,0 +1,24 @@
+{
+  "protected": [
+    "leukonet-pay.testnet"
+  ],
+  "accounts": [
+    "leukonet-pay.testnet",
+    "steady-agent.leukonet-mw43jm6i.testnet",
+    "supplier-a.leukonet-mw43jm6i.testnet",
+    "supplier-b.leukonet-mw43jm6i.testnet",
+    "drainer-12rxg.leukonet-mw43jm6i.testnet",
+    "wallet-h4sgy.leukonet-mw43jm6i.testnet",
+    "wallet-r41xh.leukonet-mw43jm6i.testnet",
+    "wallet-adtz8.leukonet-mw43jm6i.testnet",
+    "thief-l1rhl.leukonet-mw43jm6i.testnet",
+    "wallet-xf3xf.leukonet-mw43jm6i.testnet",
+    "free-airdrop-1xued.leukonet-mw43jm6i.testnet",
+    "wallet-6xkjk.leukonet-mw43jm6i.testnet",
+    "payroll-agent-cxln9.leukonet-mw43jm6i.testnet",
+    "shop-kvuds.leukonet-mw43jm6i.testnet",
+    "shop-f01qj.leukonet-mw43jm6i.testnet",
+    "exfil-r3kiv.leukonet-mw43jm6i.testnet",
+    "leuk0net-pay.testnet"
+  ]
+}

@@ -1,0 +1,17 @@
+[package]
+name = "leukonet-bait"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Simulated airdrop scam used by the Leukonet attack simulator on testnet."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+
+[profile.release]
+opt-level = "z"
+lto = true
+panic = "abort"
+codegen-units = 1
