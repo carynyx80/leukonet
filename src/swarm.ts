@@ -248,7 +248,7 @@ export class Swarm {
       } catch (e: any) {
         this.hub.log(`registry poll failed: ${e.message}`, "warn");
       }
-      setTimeout(tick, (reportsOpen(this.hub.state.reports) ? 1500 : 3000));
+      setTimeout(tick, reportsOpen(this.hub.state.reports) ? 2000 : 5000);
     };
     void tick();
   }

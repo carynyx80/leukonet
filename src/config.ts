@@ -47,6 +47,13 @@ const envKeys: Record<string, StoredKey> = (() => {
   }
 })();
 
+/** Adds FASTNEAR_API_KEY (if set) to FastNear and neardata URLs for higher rate limits. */
+export function withFastnearKey(url: string): string {
+  const key = process.env.FASTNEAR_API_KEY;
+  if (!key || !/fastnear\.com|neardata\.xyz/.test(url)) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}apiKey=${encodeURIComponent(key)}`;
+}
+
 export function loadKey(name: string): StoredKey {
   if (envKeys[name] && !fs.existsSync(path.join(KEY_DIR, `${name}.json`))) return envKeys[name];
   const file = path.join(KEY_DIR, `${name}.json`);

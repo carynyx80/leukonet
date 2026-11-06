@@ -1,5 +1,5 @@
 import { Account, JsonRpcProvider, KeyPair, KeyPairSigner, actions } from "near-api-js";
-import { config, loadKey } from "./config.js";
+import { config, loadKey, withFastnearKey } from "./config.js";
 
 export const YOCTO = 10n ** 24n;
 export const near = (n: number | string) => BigInt(Math.round(Number(n) * 1e6)) * 10n ** 18n;
@@ -11,7 +11,7 @@ export const TGAS = 10n ** 12n;
  * default testnet RPC rotate through this pool on 429s and network errors.
  * Override with NEAR_RPC_URLS (comma-separated).
  */
-const RPC_POOL = (process.env.NEAR_RPC_URLS ?? `${config.rpcUrl},https://near-testnet.lava.build,https://rpc.testnet.near.org`)
+const RPC_POOL = (process.env.NEAR_RPC_URLS ?? `${config.rpcUrl},https://near-testnet.drpc.org,https://near-testnet.lava.build,https://rpc.testnet.near.org`)
   .split(",")
   .map((u) => u.trim())
   .filter(Boolean);
@@ -23,7 +23,7 @@ const providers = new Map<string, JsonRpcProvider>();
 export function provider(url = config.rpcUrl): JsonRpcProvider {
   let p = providers.get(url);
   if (!p) {
-    p = new JsonRpcProvider({ url });
+    p = new JsonRpcProvider({ url: withFastnearKey(url) });
     providers.set(url, p);
   }
   return p;
@@ -44,7 +44,7 @@ class EndpointError extends Error {
 async function callOnce(target: string, method: string, params: unknown) {
   let res: Response;
   try {
-    res = await fetch(target, {
+    res = await fetch(withFastnearKey(target), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: "leukonet", method, params }),

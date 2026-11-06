@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { baseEncode } from "near-api-js";
 import { rpc } from "./near.js";
-import { config } from "./config.js";
+import { config, withFastnearKey } from "./config.js";
 
 export type ActionKind =
   | "CreateAccount"
@@ -105,10 +105,13 @@ async function fetchBlockRpc(height: number, rpcUrl?: string): Promise<Omit<Bloc
 }
 
 async function fetchBlock(height: number, dataUrl: string, rpcUrl?: string): Promise<Omit<BlockEvent, "lag"> | null> {
-  let res = await fetch(`${dataUrl}/v0/block/${height}`);
-  for (let i = 0; res.status === 429 && i < 2; i++) {
-    await sleep(500 * (i + 1));
-    res = await fetch(`${dataUrl}/v0/block/${height}`);
+  const url = withFastnearKey(`${dataUrl}/v0/block/${height}`);
+  let res = await fetch(url);
+  // Rate limited: wait it out first; the RPC fallback only adds load to an already throttled client.
+  for (let i = 0; res.status === 429 && i < 4; i++) {
+    const after = Number(res.headers.get("retry-after") ?? 0) * 1000;
+    await sleep(Math.max(after, 700 * 2 ** i));
+    res = await fetch(url);
   }
   if (res.status === 429) return fetchBlockRpc(height, rpcUrl);
   if (!res.ok) {
@@ -155,7 +158,7 @@ async function fetchBlock(height: number, dataUrl: string, rpcUrl?: string): Pro
 /** Chain head from neardata's redirect, so following the chain costs no RPC calls. */
 async function headHeight(dataUrl: string, rpcUrl?: string): Promise<number> {
   try {
-    const res = await fetch(`${dataUrl}/v0/last_block/final`, { redirect: "manual" });
+    const res = await fetch(withFastnearKey(`${dataUrl}/v0/last_block/final`), { redirect: "manual" });
     const m = (res.headers.get("location") ?? "").match(/(\d+)$/);
     if (m) return Number(m[1]);
   } catch {
