@@ -190,7 +190,8 @@ export class BlockStream extends EventEmitter {
   private async loop() {
     const maxLag = this.opts.maxLag ?? 150;
     const parallel = this.opts.parallel ?? 3;
-    const pollMs = this.opts.pollMs ?? 700;
+    // ~one testnet block time: asking for the head sooner mostly finds nothing new.
+    const pollMs = this.opts.pollMs ?? 1050;
     while (this.running) {
       let head: number;
       try {
@@ -198,6 +199,11 @@ export class BlockStream extends EventEmitter {
       } catch (e) {
         this.emit("warn", `head fetch failed: ${(e as Error).message}`);
         await sleep(pollMs * 2);
+        continue;
+      }
+      if (head < this.next) {
+        // Nothing new yet: wait a little and ask again, without fetching anything else.
+        await sleep(400);
         continue;
       }
       if (head - this.next > maxLag) {
