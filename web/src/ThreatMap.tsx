@@ -329,8 +329,8 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy, focusX =
       ctx.lineWidth = 1;
       ctx.fillStyle = colors.chain;
       ctx.textAlign = "center";
-      ctx.font = `600 ${narrow ? 15 : 19}px 'JetBrains Mono', monospace`;
-      ctx.fillText(String(reportsRef.current.filter((r) => r.status === "Confirmed").length), cx, cy + 4);
+      ctx.font = `800 ${narrow ? 20 : 26}px 'Big Shoulders Display', 'JetBrains Mono', monospace`;
+      ctx.fillText(String(reportsRef.current.filter((r) => r.status === "Confirmed").length), cx, cy + 5);
       ctx.font = `${narrow ? 7.5 : 8.5}px 'JetBrains Mono', monospace`;
       ctx.fillText("CAUGHT", cx, cy + (narrow ? 14 : 17));
 
@@ -360,12 +360,12 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy, focusX =
         if (img?.complete) ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
         ctx.textAlign = "center";
         ctx.fillStyle = colors.ink;
-        ctx.font = `600 ${narrow ? 10.5 : 12.5}px 'Instrument Sans', sans-serif`;
-        ctx.fillText(a.name, x, y + size / 2 + 15);
+        ctx.font = `800 ${narrow ? 13 : 16}px 'Big Shoulders Display', 'Instrument Sans', sans-serif`;
+        ctx.fillText(a.name, x, y + size / 2 + 16);
         if (mood) {
           ctx.fillStyle = c;
           ctx.font = `600 ${narrow ? 9 : 10}px 'JetBrains Mono', monospace`;
-          ctx.fillText(mood.toUpperCase(), x, y + size / 2 + 28);
+          ctx.fillText(mood.toUpperCase(), x, y + size / 2 + 30);
         }
       }
 
