@@ -263,6 +263,9 @@ function Story({ s, minds, txUrl, accUrl, now }: { s: SwarmState; minds: Record<
   const steps = s.attack.filter((e) => e.stage !== "done");
   const start = steps.find((e) => e.stage === "start");
   const running = !!s.attackRunning;
+  const lag = s.blocks[s.blocks.length - 1]?.lag ?? 0;
+  // A simulation only works if the swarm keeps up with the chain; say so instead of failing after 75s.
+  const behind = lag > 15;
   const showMission = !!start && (running || (start.ts !== dismissed && now - start.ts < 10 * 60_000));
 
   if (!showMission) {
@@ -276,9 +279,14 @@ function Story({ s, minds, txUrl, accUrl, now }: { s: SwarmState; minds: Record<
         {meta?.demoControls ? (
           <>
             <p className="pick">Release a scam on testnet</p>
+            {behind && (
+              <p className="lagging" role="status">
+                The swarm is catching up with the chain ({lag} blocks behind). Simulations unlock when it's back in sync, usually within a minute.
+              </p>
+            )}
             <div className="scams">
               {meta.attacks.map((a) => (
-                <button key={a.kind} type="button" className="scam" disabled={running} onClick={() => void launch(a.kind)} style={{ ["--hue" as any]: `var(--${agentByName(CATCHER[a.kind])?.hue})` }}>
+                <button key={a.kind} type="button" className="scam" disabled={running || behind} onClick={() => void launch(a.kind)} style={{ ["--hue" as any]: `var(--${agentByName(CATCHER[a.kind])?.hue})` }}>
                   <Avatar name={CATCHER[a.kind]} size={30} />
                   <span>
                     <b>{a.label}</b>

@@ -104,6 +104,7 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .lede { margin: 0; color: var(--ink-2); font-size: 16.5px; max-width: 46ch; }
 .pick { margin: 10px 0 0; font-family: var(--f-mono); font-size: 11.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .scams { display: grid; gap: 8px; }
+.lagging { margin: 0; font-size: 13.5px; color: var(--pending); border: 1px solid color-mix(in srgb, var(--pending) 45%, transparent); border-radius: 12px; padding: 9px 12px; background: color-mix(in srgb, var(--pending) 7%, transparent); }
 .scam {
   --hue: var(--accent);
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; text-align: left;
