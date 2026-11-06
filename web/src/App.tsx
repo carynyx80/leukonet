@@ -84,6 +84,82 @@ function ThemeToggle() {
   );
 }
 
+const MENU_LINKS = [
+  { href: "#top", label: "Live map", hint: "Watch the swarm and release a scam" },
+  { href: "#swarm", label: "The swarm", hint: "Meet the five agents" },
+  { href: "#check", label: "Check an account", hint: "Is it safe to pay?" },
+  { href: "#registry", label: "Registry", hint: "Every verdict, onchain" },
+  { href: "#how", label: "How it works", hint: "Watch, flag, verify, protect" },
+  { href: "#developers", label: "Developers", hint: "One call before every payment" },
+];
+
+/** Hamburger menu: the button opens a panel with every section, the theme switch and the source link. */
+function Menu() {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const firstLink = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    firstLink.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        button.current?.focus();
+      }
+    };
+    const onClick = (e: MouseEvent) => {
+      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [open]);
+
+  return (
+    <div className="menu" ref={wrap}>
+      <button
+        ref={button}
+        type="button"
+        className={`burger ${open ? "open" : ""}`}
+        aria-label={open ? "Close menu" : "Open menu"}
+        aria-expanded={open}
+        aria-controls="site-menu"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span />
+        <span />
+        <span />
+      </button>
+      {open && (
+        <div id="site-menu" className="menu-panel">
+          <nav aria-label="Sections">
+            {MENU_LINKS.map((l, i) => (
+              <a key={l.href} href={l.href} ref={i === 0 ? firstLink : undefined} onClick={() => setOpen(false)}>
+                <b>{l.label}</b>
+                <small>{l.hint}</small>
+              </a>
+            ))}
+          </nav>
+          <div className="menu-foot">
+            <span className="muted">Theme</span>
+            <ThemeToggle />
+          </div>
+          <div className="menu-foot">
+            <a href="https://github.com/carynyx80/leukonet" target="_blank" rel="noreferrer">
+              Source code ↗
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Logo() {
   return (
     <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true" className="logo">
@@ -136,18 +212,12 @@ export function App() {
             leuko<b>net</b>
           </span>
         </a>
-        <div className="nav-links">
-          <a href="#swarm">The swarm</a>
-          <a href="#check">Check an account</a>
-          <a href="#registry">Registry</a>
-          <a href="#developers">Developers</a>
-        </div>
         <div className="nav-right">
           <span className={`live ${s.connected ? "" : "off"}`}>
             <i />
             {s.connected ? "testnet live" : "reconnecting"}
           </span>
-          <ThemeToggle />
+          <Menu />
         </div>
       </nav>
 
