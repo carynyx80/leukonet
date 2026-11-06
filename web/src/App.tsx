@@ -475,7 +475,7 @@ function AgentCard({
       </div>
       <dl className="agent-stats">
         <div><dt>reported</dt><dd className="mono">{caught}</dd></div>
-        <div><dt>right / wrong</dt><dd className="mono">{stats ? `${stats.correct}/${stats.wrong}` : "0/0"}</dd></div>
+        <div><dt>record</dt><dd className="mono" title="votes on the right side / wrong side">{stats ? `${stats.correct}✓ ${stats.wrong}✗` : "0✓ 0✗"}</dd></div>
         <div><dt>tx read</dt><dd className="mono">{(mind?.seen ?? 0).toLocaleString()}</dd></div>
       </dl>
       {memory && memory.length > 0 && (
