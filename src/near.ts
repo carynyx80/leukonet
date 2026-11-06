@@ -1,4 +1,4 @@
-import { Account, FailoverRpcProvider, JsonRpcProvider, KeyPair, KeyPairSigner, actions } from "near-api-js";
+import { Account, JsonRpcProvider, KeyPair, KeyPairSigner, actions } from "near-api-js";
 import { config, loadKey } from "./config.js";
 
 export const YOCTO = 10n ** 24n;
@@ -15,16 +15,15 @@ const RPC_POOL = (process.env.NEAR_RPC_URLS ?? `${config.rpcUrl},https://near-te
   .split(",")
   .map((u) => u.trim())
   .filter(Boolean);
-let preferred = 0;
+/** Endpoint -> time until which it is skipped after misbehaving. */
+const coolUntil = new Map<string, number>();
 
-const providers = new Map<string, any>();
-export function provider(url = config.rpcUrl): any {
+const providers = new Map<string, JsonRpcProvider>();
+/** Transactions always go to one endpoint (FastNear by default); serial() rides out its rate limits. */
+export function provider(url = config.rpcUrl): JsonRpcProvider {
   let p = providers.get(url);
   if (!p) {
-    p =
-      url === config.rpcUrl && RPC_POOL.length > 1
-        ? new FailoverRpcProvider(RPC_POOL.map((u) => new JsonRpcProvider({ url: u })))
-        : new JsonRpcProvider({ url });
+    p = new JsonRpcProvider({ url });
     providers.set(url, p);
   }
   return p;
@@ -32,34 +31,71 @@ export function provider(url = config.rpcUrl): any {
 
 export const isRateLimit = (e: unknown) => /429|rate limit|too many requests|TooManyRequests/i.test(String((e as any)?.message ?? e));
 
-/** Raw JSON-RPC call with retries; the default RPC rotates through the pool. */
-export async function rpc<T = any>(method: string, params: unknown, url = config.rpcUrl): Promise<T> {
-  let lastErr: unknown;
-  const pooled = url === config.rpcUrl && RPC_POOL.length > 1;
-  for (let attempt = 0; attempt < (pooled ? RPC_POOL.length + 3 : 4); attempt++) {
-    const target = pooled ? RPC_POOL[(preferred + attempt) % RPC_POOL.length] : url;
-    try {
-      const res = await fetch(target, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: "leukonet", method, params }),
-      });
-      if (res.status === 429 || res.status >= 500) throw new Error(`RPC ${res.status}`);
-      if (pooled && attempt > 0) preferred = (preferred + attempt) % RPC_POOL.length;
-      const body: any = await res.json();
-      if (body.error) {
-        const msg = JSON.stringify(body.error);
-        // Unknown block/chunk right at the head: let the caller decide.
-        const e = new Error(msg);
-        (e as any).rpcError = body.error;
-        throw e;
-      }
-      return body.result as T;
-    } catch (e: any) {
-      lastErr = e;
-      if (e?.rpcError && !/TIMEOUT|INTERNAL|429|rate/i.test(JSON.stringify(e.rpcError))) throw e;
-      await new Promise((r) => setTimeout(r, pooled ? 150 : 300 * 2 ** attempt));
+/** An endpoint problem (as opposed to a genuine answer such as "unknown block" or a contract panic). */
+class EndpointError extends Error {
+  constructor(
+    message: string,
+    readonly coolMs: number,
+  ) {
+    super(message);
+  }
+}
+
+async function callOnce(target: string, method: string, params: unknown) {
+  let res: Response;
+  try {
+    res = await fetch(target, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: "leukonet", method, params }),
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (e: any) {
+    throw new EndpointError(`network: ${e?.message ?? e}`, 30_000);
+  }
+  if (res.status === 429) throw new EndpointError("RPC 429", 30_000);
+  if (res.status >= 500) throw new EndpointError(`RPC ${res.status}`, 30_000);
+  let body: any;
+  try {
+    body = await res.json();
+  } catch {
+    throw new EndpointError(`RPC ${res.status}: not JSON`, 10 * 60_000);
+  }
+  if (body?.error) {
+    const text = JSON.stringify(body.error);
+    // A bare string error ("This endpoint has been discontinued.") or overload is the endpoint's fault.
+    if (typeof body.error === "string" || /discontinued|deprecated|rate|429|TIMEOUT|INTERNAL/i.test(text)) {
+      throw new EndpointError(text, /discontinued|deprecated/i.test(text) ? 60 * 60_000 : 30_000);
     }
+    const e = new Error(text);
+    (e as any).rpcError = body.error;
+    throw e;
+  }
+  if (body?.result === undefined) throw new EndpointError("RPC reply without a result", 10 * 60_000);
+  return body.result;
+}
+
+/**
+ * Raw JSON-RPC call. Calls to the default testnet RPC try each healthy endpoint
+ * in the pool in order, so the primary is always preferred once it recovers;
+ * an endpoint that misbehaves is skipped for a while.
+ */
+export async function rpc<T = any>(method: string, params: unknown, url = config.rpcUrl): Promise<T> {
+  const pool = url === config.rpcUrl ? RPC_POOL : [url];
+  let lastErr: unknown;
+  for (let round = 0; round < 3; round++) {
+    const now = Date.now();
+    const healthy = pool.filter((u) => (coolUntil.get(u) ?? 0) <= now);
+    for (const target of healthy.length ? healthy : pool) {
+      try {
+        return (await callOnce(target, method, params)) as T;
+      } catch (e: any) {
+        lastErr = e;
+        if (!(e instanceof EndpointError)) throw e; // a real answer: unknown block, contract panic...
+        if (pool.length > 1) coolUntil.set(target, Date.now() + e.coolMs);
+      }
+    }
+    await new Promise((r) => setTimeout(r, 400 * 2 ** round));
   }
   throw lastErr;
 }

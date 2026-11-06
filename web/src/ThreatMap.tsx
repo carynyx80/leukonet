@@ -8,19 +8,12 @@ interface Props {
   subscribe: (fn: (e: Ev) => void) => () => void;
   /** Agents currently busy (alert / staking / checking), for halos. */
   busy: Record<string, string>;
+  /** Horizontal centre of the organism, 0-1 of the width (leaves room for overlay text). */
+  focusX?: number;
 }
 
-/** A transaction drifting from the edge to the agent that inspects it. */
-interface Particle {
-  a: number;
-  agent: string;
-  born: number;
-  life: number;
-  demo: boolean;
-  kind: string;
-  wobble: number;
-}
-interface Pulse { from: [number, number] | string; to: number | "registry"; color: string; born: number; size: number }
+interface Particle { a: number; agent: string; born: number; life: number; demo: boolean; wobble: number }
+interface Pulse { from: string; to: number | "registry"; color: string; born: number; size: number }
 interface Wave { reportId: number; born: number }
 
 const hash = (s: string) => {
@@ -28,7 +21,7 @@ const hash = (s: string) => {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return (h >>> 0) / 4294967295;
 };
-const short = (id: string, n = 26) => (id.length > n ? `${id.slice(0, n - 11)}…${id.slice(-9)}` : id);
+const short = (id: string, n = 28) => (id.length > n ? `${id.slice(0, n - 11)}…${id.slice(-9)}` : id);
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
 
 const OWNER: Record<string, string> = {
@@ -39,11 +32,12 @@ const OWNER: Record<string, string> = {
 };
 
 /**
- * The bloodstream. Every testnet transaction flows from the edge to the
- * agent responsible for it; agents sit on a ring around the registry; reports
- * appear on the outer ring with a line for every staked vote.
+ * The organism. Testnet transactions stream in from the edge to the agent that
+ * inspects them. The agents ring the registry. Accounts the swarm has judged sit
+ * on the outer ring: quiet dots once settled, lit up with vote lines while
+ * the swarm is deciding.
  */
-export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props) {
+export function ThreatMap({ sentinelAccounts, reports, subscribe, busy, focusX = 0.5 }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const particles = useRef<Particle[]>([]);
   const pulses = useRef<Pulse[]>([]);
@@ -52,18 +46,22 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
   const reportsRef = useRef(reports);
   const busyRef = useRef(busy);
   const seenStatus = useRef<Record<number, string>>({});
+  const settledAt = useRef<Record<number, number>>({});
   const threatPos = useRef<Record<number, [number, number, number]>>({});
+  const hoverRef = useRef<number | null>(null);
   const [hover, setHover] = useState<{ r: any; x: number; y: number } | null>(null);
   reportsRef.current = reports;
   busyRef.current = busy;
 
-  // Shockwave when a report turns Confirmed.
   useEffect(() => {
     for (const r of reports) {
       const prev = seenStatus.current[r.id];
-      if (prev && prev !== r.status && r.status === "Confirmed") {
-        waves.current.push({ reportId: r.id, born: performance.now() });
-        registryFlash.current = performance.now();
+      if (prev && prev !== r.status) {
+        settledAt.current[r.id] = performance.now();
+        if (r.status === "Confirmed") {
+          waves.current.push({ reportId: r.id, born: performance.now() });
+          registryFlash.current = performance.now();
+        }
       }
       seenStatus.current[r.id] = r.status;
     }
@@ -74,23 +72,15 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
       subscribe((e) => {
         const now = performance.now();
         if (e.type === "tx") {
-          if (particles.current.length > 320) particles.current.splice(0, particles.current.length - 320);
-          const kind: string = (e.kinds as string[]).find((k) => OWNER[k]) ?? e.kinds[0] ?? "Other";
+          if (particles.current.length > 260) particles.current.splice(0, particles.current.length - 260);
+          const kind: string = (e.kinds as string[]).find((k) => OWNER[k]) ?? "Other";
           let agent = OWNER[kind] ?? "b-cell";
           if (kind === "Transfer" && hash(e.hash) > 0.5) agent = "nk-cell";
-          particles.current.push({
-            a: hash(e.hash) * Math.PI * 2,
-            agent,
-            born: now,
-            life: 2600 + hash(e.signer) * 1800,
-            demo: !!e.demo,
-            kind,
-            wobble: hash(e.receiver) - 0.5,
-          });
+          particles.current.push({ a: hash(e.hash) * Math.PI * 2, agent, born: now, life: 2400 + hash(e.signer) * 1600, demo: !!e.demo, wobble: hash(e.receiver) - 0.5 });
         }
         if (e.type === "chain" && e.ok && e.reportId !== undefined) {
           if (e.action === "finalize") {
-            pulses.current.push({ from: "report", to: e.reportId, color: "chain", born: now, size: 5 });
+            pulses.current.push({ from: "report", to: e.reportId, color: "chain", born: now, size: 6 });
             registryFlash.current = now;
           } else {
             pulses.current.push({
@@ -98,7 +88,7 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
               to: e.reportId,
               color: e.action === "flag" ? `agent:${e.sentinel}` : e.support ? "chain" : "threat",
               born: now,
-              size: e.action === "flag" ? 6 : 4.5,
+              size: e.action === "flag" ? 7 : 5,
             });
           }
         }
@@ -117,7 +107,7 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
 
     const readColors = () => {
       const cs = getComputedStyle(document.documentElement);
-      for (const k of ["bg", "surface", "ink", "muted", "line", "accent", "chain", "threat", "safe", "pending", "particle", ...AGENTS.map((a) => a.hue)]) {
+      for (const k of ["bg", "surface", "ink", "muted", "line", "accent", "chain", "threat", "pending", "particle", ...AGENTS.map((a) => a.hue)]) {
         colors[k] = cs.getPropertyValue(`--${k}`).trim();
       }
       for (const a of AGENTS) {
@@ -131,6 +121,15 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
       }
     };
     const col = (c: string) => (c.startsWith("agent:") ? colors[AGENTS.find((a) => a.name === c.slice(6))?.hue ?? "accent"] : colors[c]);
+    const glow = (x: number, y: number, r: number, c: string, alpha = "55") => {
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, c + alpha);
+      g.addColorStop(1, c + "00");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    };
 
     const draw = (now: number) => {
       if (now - colorsAt > 1000) {
@@ -146,49 +145,40 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
       }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      const cx = w / 2;
+      const cx = w * focusX;
       const cy = h / 2;
-      const R = Math.min(w, h) / 2 - 14;
-      const narrow = w < 560;
-      const agentR = R * 0.42;
-      const threatR = R * (narrow ? 0.72 : 0.8);
+      const R = Math.max(120, Math.min(h / 2 - 26, w - cx - 30, cx - 30));
+      const narrow = R < 230;
+      const agentR = R * 0.43;
+      const threatR = R * 0.84;
 
-      // backdrop glow
-      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R);
-      g.addColorStop(0, colors.surface);
-      g.addColorStop(1, "transparent");
-      ctx.fillStyle = g;
+      // soft body
+      glow(cx, cy, R * 1.15, colors.accent, "14");
+      ctx.strokeStyle = colors.line;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 7]);
       ctx.beginPath();
       ctx.arc(cx, cy, R, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, threatR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
 
       // radar sweep
       if (!reduce && "createConicGradient" in ctx) {
-        const ang = (now / 4000) * Math.PI * 2;
-        const cg = (ctx as any).createConicGradient(ang, cx, cy);
-        cg.addColorStop(0, colors.accent + "30");
-        cg.addColorStop(0.08, "transparent");
-        cg.addColorStop(1, "transparent");
+        const cg = (ctx as any).createConicGradient((now / 5000) * Math.PI * 2, cx, cy);
+        cg.addColorStop(0, colors.accent + "26");
+        cg.addColorStop(0.07, colors.accent + "00");
+        cg.addColorStop(1, colors.accent + "00");
         ctx.fillStyle = cg;
         ctx.beginPath();
         ctx.arc(cx, cy, R, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // rings
-      ctx.lineWidth = 1;
-      for (const [r, dash, alpha] of [[R, [2, 6], 0.9], [threatR, [1, 5], 0.7], [agentR, [], 0.35]] as const) {
-        ctx.setLineDash(dash as unknown as number[]);
-        ctx.globalAlpha = alpha;
-        ctx.strokeStyle = colors.line;
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
-
-      // agent positions
       const pos: Record<string, [number, number]> = {};
       AGENTS.forEach((a, i) => {
         const ang = -Math.PI / 2 + (i / AGENTS.length) * Math.PI * 2;
@@ -197,178 +187,138 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
       const byAccount: Record<string, string> = {};
       for (const [name, acc] of Object.entries(sentinelAccounts)) byAccount[acc] = name;
 
-      // particles: edge -> responsible agent, with a short trail
+      // transactions streaming in
       particles.current = particles.current.filter((p) => now - p.born < p.life);
       for (const p of particles.current) {
         const t = ease(Math.min(1, (now - p.born) / p.life));
         const sx = cx + Math.cos(p.a) * R;
         const sy = cy + Math.sin(p.a) * R;
         const [tx, ty] = pos[p.agent] ?? [cx, cy];
-        // curve through a control point bent sideways
-        const mx = (sx + tx) / 2 + (ty - sy) * p.wobble * 0.5;
-        const my = (sy + ty) / 2 - (tx - sx) * p.wobble * 0.5;
-        const at = (u: number) => [
-          (1 - u) * (1 - u) * sx + 2 * (1 - u) * u * mx + u * u * tx,
-          (1 - u) * (1 - u) * sy + 2 * (1 - u) * u * my + u * u * ty,
-        ];
+        const mx = (sx + tx) / 2 + (ty - sy) * p.wobble * 0.55;
+        const my = (sy + ty) / 2 - (tx - sx) * p.wobble * 0.55;
+        const at = (u: number) => [(1 - u) ** 2 * sx + 2 * (1 - u) * u * mx + u * u * tx, (1 - u) ** 2 * sy + 2 * (1 - u) * u * my + u * u * ty];
         const [x, y] = at(t);
-        const [px, py] = at(Math.max(0, t - 0.06));
-        const c = p.demo ? colors.accent : p.kind === "Transfer" || p.kind === "FunctionCall" ? colors.particle : col(`agent:${p.agent}`);
-        ctx.globalAlpha = (t < 0.1 ? t * 10 : 1) * (t > 0.92 ? (1 - t) * 12 : 1) * (p.demo ? 1 : 0.8);
+        const [px, py] = at(Math.max(0, t - 0.08));
+        const c = p.demo ? colors.accent : col(`agent:${p.agent}`);
+        const fade = (t < 0.12 ? t / 0.12 : 1) * (t > 0.9 ? (1 - t) * 10 : 1);
+        ctx.globalAlpha = fade * (p.demo ? 1 : 0.55);
         ctx.strokeStyle = c;
-        ctx.lineWidth = p.demo ? 2.2 : 1.2;
+        ctx.lineWidth = p.demo ? 2.4 : 1.3;
+        ctx.lineCap = "round";
         ctx.beginPath();
         ctx.moveTo(px, py);
         ctx.lineTo(x, y);
         ctx.stroke();
-        ctx.fillStyle = c;
-        ctx.beginPath();
-        ctx.arc(x, y, p.demo ? 2.8 : 1.6, 0, Math.PI * 2);
-        ctx.fill();
+        if (p.demo) glow(x, y, 9, c, "88");
       }
       ctx.globalAlpha = 1;
       ctx.lineWidth = 1;
 
-      // threats on the outer ring
-      // Evenly spaced by report id so labels never collide; offset so they sit between agents.
-      const recent = reportsRef.current.slice(0, narrow ? 6 : 10).slice().sort((a, b) => a.id - b.id);
+      // the judged accounts
+      const all = reportsRef.current.slice(0, narrow ? 8 : 12).slice().sort((a, b) => a.id - b.id);
+      const latest = reportsRef.current[0];
+      const n = Math.max(all.length, 6);
       const tpos: Record<number, [number, number, number]> = {};
-      for (const [i, r] of recent.entries()) {
-        const ang = -Math.PI / 2 + Math.PI / Math.max(recent.length, 5) + (i / Math.max(recent.length, 5)) * Math.PI * 2;
-        const x = cx + Math.cos(ang) * threatR;
-        const y = cy + Math.sin(ang) * threatR;
-        const rad = 6 + r.severity * 0.7;
-        tpos[r.id] = [x, y, rad];
-        for (const v of r.votes) {
-          const name = byAccount[v.sentinel];
-          const from = pos[name];
-          if (!from) continue;
-          ctx.strokeStyle = v.support ? col(`agent:${name}`) : colors.threat;
-          ctx.globalAlpha = r.status === "Open" ? 0.8 : 0.22;
-          ctx.setLineDash(v.support ? [] : [3, 4]);
-          ctx.lineWidth = r.status === "Open" ? 1.6 : 1;
-          ctx.beginPath();
-          ctx.moveTo(from[0], from[1]);
-          ctx.lineTo(x, y);
-          ctx.stroke();
-        }
-        ctx.setLineDash([]);
-        ctx.lineWidth = 1;
-        if (r.status === "Confirmed") {
-          ctx.strokeStyle = colors.threat;
-          ctx.globalAlpha = 0.14;
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.lineTo(x, y);
-          ctx.stroke();
-        }
-        ctx.globalAlpha = 1;
-        const color = r.status === "Confirmed" ? colors.threat : r.status === "Open" ? colors.pending : colors.muted;
-        if (r.status === "Open" && !reduce) {
-          ctx.strokeStyle = color;
-          ctx.globalAlpha = 0.5 + 0.5 * Math.sin(now / 180);
-          ctx.beginPath();
-          ctx.arc(x, y, rad + 7, 0, Math.PI * 2);
-          ctx.stroke();
+      for (const [i, r] of all.entries()) {
+        const ang = -Math.PI / 2 + Math.PI / n + (i / n) * Math.PI * 2;
+        tpos[r.id] = [cx + Math.cos(ang) * threatR, cy + Math.sin(ang) * threatR, 0];
+      }
+      for (const r of all) {
+        const [x, y] = tpos[r.id];
+        const open = r.status === "Open";
+        const recent = now - (settledAt.current[r.id] ?? -1e9) < 9000;
+        const hovered = hoverRef.current === r.id;
+        const lit = open || recent || hovered;
+        const color = r.status === "Confirmed" ? colors.threat : open ? colors.pending : colors.muted;
+        const rad = lit ? 7 + r.severity * 0.6 : 4.5;
+        tpos[r.id][2] = rad;
+
+        if (lit) {
+          for (const v of r.votes) {
+            const name = byAccount[v.sentinel];
+            const from = pos[name];
+            if (!from) continue;
+            ctx.strokeStyle = v.support ? col(`agent:${name}`) : colors.threat;
+            ctx.globalAlpha = open || hovered ? 0.85 : 0.45 * (1 - (now - (settledAt.current[r.id] ?? now)) / 9000);
+            ctx.setLineDash(v.support ? [] : [4, 4]);
+            ctx.lineWidth = 1.8;
+            ctx.beginPath();
+            ctx.moveTo(from[0], from[1]);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          ctx.lineWidth = 1;
           ctx.globalAlpha = 1;
+          glow(x, y, rad * 3, color, "70");
+          if (open && !reduce) {
+            ctx.strokeStyle = color;
+            ctx.globalAlpha = 0.5 + 0.5 * Math.sin(now / 160);
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, rad + 8, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.lineWidth = 1;
+          }
         }
-        // glow
-        const gl = ctx.createRadialGradient(x, y, 0, x, y, rad * 2.6);
-        gl.addColorStop(0, color + "66");
-        gl.addColorStop(1, "transparent");
-        ctx.fillStyle = gl;
-        ctx.beginPath();
-        ctx.arc(x, y, rad * 2.6, 0, Math.PI * 2);
-        ctx.fill();
         ctx.fillStyle = color;
+        ctx.globalAlpha = lit ? 1 : 0.75;
         ctx.beginPath();
         ctx.arc(x, y, rad, 0, Math.PI * 2);
         ctx.fill();
-        if (hover?.r?.id === r.id) {
-          ctx.strokeStyle = colors.ink;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(x, y, rad + 3, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.lineWidth = 1;
+        ctx.globalAlpha = 1;
+
+        if (lit || r.id === latest?.id) {
+          const inward = narrow ? x > cx : x < cx;
+          const lx = x + (inward ? -rad - 10 : rad + 10);
+          ctx.textAlign = inward ? "right" : "left";
+          ctx.font = `600 ${narrow ? 11 : 12}px 'JetBrains Mono', monospace`;
+          ctx.fillStyle = colors.ink;
+          ctx.fillText(short(r.target, narrow ? 16 : 28), lx, y - 2);
+          ctx.font = `${narrow ? 10 : 11}px 'Instrument Sans', sans-serif`;
+          ctx.fillStyle = color;
+          ctx.fillText(open ? `${r.category} · voting` : `${r.category} · ${r.status.toLowerCase()}`, lx, y + 12);
         }
-        // On narrow screens labels point inward so they are never clipped at the edge.
-        const left = narrow ? x > cx : x < cx;
-        const lx = x + (left ? -rad - 8 : rad + 8);
-        ctx.textAlign = left ? "right" : "left";
-        ctx.font = "500 11px 'JetBrains Mono', monospace";
-        ctx.fillStyle = colors.ink;
-        ctx.fillText(short(r.target, narrow ? 15 : 26), lx, y - 2);
-        ctx.fillStyle = color;
-        ctx.font = "10px 'JetBrains Mono', monospace";
-        ctx.fillText(narrow ? r.category : `${r.category} · ${r.status === "Open" ? "voting" : r.status.toLowerCase()}`, lx, y + 11);
       }
       threatPos.current = tpos;
 
-      // shockwaves on confirmation
-      waves.current = waves.current.filter((wv) => now - wv.born < 1600);
+      // shockwaves
+      waves.current = waves.current.filter((wv) => now - wv.born < 1800);
       for (const wv of waves.current) {
         const p = tpos[wv.reportId];
         if (!p) continue;
-        const t = (now - wv.born) / 1600;
+        const t = (now - wv.born) / 1800;
         ctx.strokeStyle = colors.threat;
         ctx.globalAlpha = 1 - t;
         ctx.lineWidth = 3 * (1 - t) + 0.5;
         ctx.beginPath();
-        ctx.arc(p[0], p[1], p[2] + t * 70, 0, Math.PI * 2);
+        ctx.arc(p[0], p[1], 10 + ease(t) * 90, 0, Math.PI * 2);
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
       ctx.lineWidth = 1;
 
-      // pulses: agent -> report (flag, vote), report -> registry (finalize)
-      pulses.current = pulses.current.filter((p) => now - p.born < 1300);
+      // pulses
+      pulses.current = pulses.current.filter((p) => now - p.born < 1200);
       for (const p of pulses.current) {
         const target = typeof p.to === "number" ? tpos[p.to] : null;
         if (!target) continue;
-        let from: [number, number];
-        let to: [number, number];
-        if (p.from === "report") {
-          from = [target[0], target[1]];
-          to = [cx, cy];
-        } else {
-          const f = pos[p.from as string];
-          if (!f) continue;
-          from = f;
-          to = [target[0], target[1]];
-        }
-        const t = ease(Math.min(1, (now - p.born) / 900));
-        const x = from[0] + (to[0] - from[0]) * t;
-        const y = from[1] + (to[1] - from[1]) * t;
-        const c = col(p.color);
-        const gl = ctx.createRadialGradient(x, y, 0, x, y, p.size * 3);
-        gl.addColorStop(0, c);
-        gl.addColorStop(1, "transparent");
-        ctx.fillStyle = gl;
-        ctx.beginPath();
-        ctx.arc(x, y, p.size * 3, 0, Math.PI * 2);
-        ctx.fill();
+        const from = p.from === "report" ? [target[0], target[1]] : pos[p.from];
+        const to = p.from === "report" ? [cx, cy] : [target[0], target[1]];
+        if (!from) continue;
+        const t = ease(Math.min(1, (now - p.born) / 850));
+        glow(from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t, p.size * 3, col(p.color), "ee");
       }
 
       // registry
-      const flash = Math.max(0, 1 - (now - registryFlash.current) / 1200);
-      const confirmed = reportsRef.current.filter((r) => r.status === "Confirmed").length;
-      const hexR = 32 + flash * 6;
-      if (flash > 0) {
-        const gl = ctx.createRadialGradient(cx, cy, 0, cx, cy, hexR * 2.4);
-        gl.addColorStop(0, colors.chain + "55");
-        gl.addColorStop(1, "transparent");
-        ctx.fillStyle = gl;
-        ctx.beginPath();
-        ctx.arc(cx, cy, hexR * 2.4, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      const flash = Math.max(0, 1 - (now - registryFlash.current) / 1400);
+      const hexR = (narrow ? 26 : 34) + flash * 7;
+      glow(cx, cy, hexR * 2.6, colors.chain, flash > 0 ? "66" : "22");
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
         const a = Math.PI / 6 + (i * Math.PI) / 3;
-        const x = cx + Math.cos(a) * hexR;
-        const y = cy + Math.sin(a) * hexR;
-        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        i ? ctx.lineTo(cx + Math.cos(a) * hexR, cy + Math.sin(a) * hexR) : ctx.moveTo(cx + Math.cos(a) * hexR, cy + Math.sin(a) * hexR);
       }
       ctx.closePath();
       ctx.fillStyle = colors.bg;
@@ -379,24 +329,25 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
       ctx.lineWidth = 1;
       ctx.fillStyle = colors.chain;
       ctx.textAlign = "center";
-      ctx.font = "600 17px 'JetBrains Mono', monospace";
-      ctx.fillText(String(confirmed), cx, cy + 3);
-      ctx.font = "8.5px 'JetBrains Mono', monospace";
-      ctx.fillText("REGISTRY", cx, cy + 15);
+      ctx.font = `600 ${narrow ? 15 : 19}px 'JetBrains Mono', monospace`;
+      ctx.fillText(String(reportsRef.current.filter((r) => r.status === "Confirmed").length), cx, cy + 4);
+      ctx.font = `${narrow ? 7.5 : 8.5}px 'JetBrains Mono', monospace`;
+      ctx.fillText("CAUGHT", cx, cy + (narrow ? 14 : 17));
 
       // agents
-      const size = narrow ? 30 : 38;
+      const size = narrow ? 34 : 48;
       for (const a of AGENTS) {
         const [x, y] = pos[a.name];
         const c = colors[a.hue];
         const mood = busyRef.current[a.name];
+        glow(x, y, size * (mood ? 1.5 : 1.1), c, mood ? "55" : "22");
         if (mood && !reduce) {
-          const t = (now % 1400) / 1400;
+          const t = (now % 1300) / 1300;
           ctx.strokeStyle = c;
           ctx.globalAlpha = 1 - t;
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.arc(x, y, size / 2 + 4 + t * 16, 0, Math.PI * 2);
+          ctx.arc(x, y, size / 2 + 4 + t * 18, 0, Math.PI * 2);
           ctx.stroke();
           ctx.globalAlpha = 1;
           ctx.lineWidth = 1;
@@ -407,14 +358,14 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
         ctx.fill();
         const img = images[a.name];
         if (img?.complete) ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
-        ctx.fillStyle = colors.ink;
         ctx.textAlign = "center";
-        ctx.font = `600 ${narrow ? 10 : 12}px 'Instrument Sans', sans-serif`;
-        ctx.fillText(a.name, x, y + size / 2 + 14);
+        ctx.fillStyle = colors.ink;
+        ctx.font = `600 ${narrow ? 10.5 : 12.5}px 'Instrument Sans', sans-serif`;
+        ctx.fillText(a.name, x, y + size / 2 + 15);
         if (mood) {
           ctx.fillStyle = c;
-          ctx.font = "10px 'JetBrains Mono', monospace";
-          ctx.fillText(mood, x, y + size / 2 + 26);
+          ctx.font = `600 ${narrow ? 9 : 10}px 'JetBrains Mono', monospace`;
+          ctx.fillText(mood.toUpperCase(), x, y + size / 2 + 28);
         }
       }
 
@@ -422,7 +373,7 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
     };
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
-  }, [sentinelAccounts, hover]);
+  }, [sentinelAccounts, focusX]);
 
   const onMove = (e: React.MouseEvent) => {
     const rect = canvas.current!.getBoundingClientRect();
@@ -431,8 +382,9 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
     let hit: any = null;
     for (const r of reportsRef.current) {
       const p = threatPos.current[r.id];
-      if (p && Math.hypot(p[0] - mx, p[1] - my) < p[2] + 8) hit = r;
+      if (p && Math.hypot(p[0] - mx, p[1] - my) < Math.max(p[2], 6) + 9) hit = r;
     }
+    hoverRef.current = hit?.id ?? null;
     if ((hit?.id ?? null) !== (hover?.r?.id ?? null)) setHover(hit ? { r: hit, x: mx, y: my } : null);
   };
 
@@ -442,15 +394,18 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy }: Props)
       <canvas
         ref={canvas}
         onMouseMove={onMove}
-        onMouseLeave={() => setHover(null)}
+        onMouseLeave={() => {
+          hoverRef.current = null;
+          setHover(null);
+        }}
         style={{ cursor: hover ? "pointer" : "default" }}
         role="img"
-        aria-label="Live map: testnet transactions flow to the five sentinel agents around the registry; reported accounts sit on the outer ring with a line for each vote"
+        aria-label="Live map: testnet transactions stream to five AI agents around the registry; accounts they judged sit on the outer ring"
       />
       {hover && (
-        <div className="map-tip" style={{ left: Math.min(hover.x + 14, (canvas.current?.clientWidth ?? 400) - 250), top: hover.y + 14 }}>
+        <div className="map-tip" style={{ left: Math.min(hover.x + 16, (canvas.current?.clientWidth ?? 400) - 270), top: Math.min(hover.y + 16, (canvas.current?.clientHeight ?? 400) - 160) }}>
+          <span className={`chip ${hover.r.status}`}>{hover.r.category} · {hover.r.status === "Open" ? "voting" : hover.r.status.toLowerCase()}</span>
           <b className="mono">{hover.r.target}</b>
-          <span className={`chip ${hover.r.status}`}>{hover.r.category} · {hover.r.status}</span>
           <p>{hover.r.summary}</p>
           <div className="tip-votes">
             {hover.r.votes.map((v: any) => (
