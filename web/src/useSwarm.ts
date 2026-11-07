@@ -15,6 +15,9 @@ export interface Meta {
   sentinelAccounts: Record<string, string>;
   nearAi: boolean;
   watchMainnet: boolean;
+  watchers?: { count: number; tips: number; verified: number };
+  dataUrl?: string;
+  rpcUrl?: string;
 }
 
 export type Ev = { type: string; [k: string]: any };
@@ -42,8 +45,19 @@ export interface SwarmState {
 const cap = <T,>(arr: T[], n: number) => (arr.length > n ? arr.slice(arr.length - n) : arr);
 
 /** Subscribes to the swarm's server-sent events and keeps a rolling view of everything. */
-export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void] {
+export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void, (e: Ev) => void, number] {
   const listeners = useRef(new Set<(e: Ev) => void>());
+  // The server's stream and this browser's own watcher both report transactions; count each once.
+  const seenTx = useRef<string[]>([]);
+  const seenSet = useRef(new Set<string>());
+  const firstSighting = (hash: string) => {
+    if (seenSet.current.has(hash)) return false;
+    seenSet.current.add(hash);
+    seenTx.current.push(hash);
+    if (seenTx.current.length > 4000) seenSet.current.delete(seenTx.current.shift()!);
+    return true;
+  };
+  const [watchers, setWatchers] = useState(0);
   const [s, set] = useState<SwarmState>({
     connected: false,
     meta: null,
@@ -98,6 +112,7 @@ export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void] {
       try {
         const res = await fetch(`${API}/api/state`);
         const snap = await res.json();
+        if (snap.meta?.watchers) setWatchers(snap.meta.watchers.count);
         set((prev) => {
           let next: SwarmState = {
             ...prev,
@@ -121,6 +136,8 @@ export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void] {
       es.onerror = () => set((p) => ({ ...p, connected: false }));
       es.addEventListener("hub", (m) => {
         const e = JSON.parse((m as MessageEvent).data);
+        if (e.type === "watchers") setWatchers(e.count);
+        if (e.type === "tx" && !firstSighting(e.hash)) return;
         listeners.current.forEach((fn) => fn(e));
         set((p) => ({ ...apply(p, e), tick: p.tick + 1 }));
       });
@@ -142,5 +159,10 @@ export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void] {
       listeners.current.delete(fn);
     };
   }, []);
-  return [s, subscribe];
+  /** Events produced in this browser (its own watcher), delivered to the same listeners. */
+  const inject = useCallback((e: Ev) => {
+    if (e.type === "tx" && !firstSighting(e.hash)) return;
+    listeners.current.forEach((fn) => fn(e));
+  }, []);
+  return [s, subscribe, inject, watchers];
 }

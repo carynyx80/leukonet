@@ -2,8 +2,7 @@ import { Account, JsonRpcProvider, KeyPair, KeyPairSigner, actions } from "near-
 import { config, loadKey, withFastnearKey } from "./config.js";
 
 export const YOCTO = 10n ** 24n;
-export const near = (n: number | string) => BigInt(Math.round(Number(n) * 1e6)) * 10n ** 18n;
-export const fmtNear = (y: bigint | string, digits = 3) => (Number(BigInt(y) / 10n ** 18n) / 1e6).toFixed(digits);
+export { near, fmtNear } from "./units.js";
 export const TGAS = 10n ** 12n;
 
 /**

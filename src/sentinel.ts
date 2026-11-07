@@ -89,6 +89,22 @@ export class Sentinel {
     }
   }
 
+  /**
+   * Re-check a claim (from another sentinel or a visitor's browser) against the
+   * chain with this sentinel's own thresholds. Never trusts the claimant.
+   */
+  async check(category: string, target: string, evidence: any): Promise<boolean> {
+    const verifier = this.verifiers.get(VERIFIER_FOR[category] ?? "");
+    if (!verifier?.verify) return false;
+    try {
+      // The accused account must actually exist.
+      if ((await this.chain.balance(target)) === null) return false;
+      return await verifier.verify({ target, evidence }, this.chain);
+    } catch {
+      return false;
+    }
+  }
+
   /** Independently re-check an open report and vote with stake. */
   async consider(report: any) {
     if (this.voted.has(report.id) || report.reporter === this.id) return;

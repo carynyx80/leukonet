@@ -16,6 +16,8 @@ export type HubEvent =
       scope: "filed" | "observed";
       network: string;
       ts: number;
+      /** "browser" when a visitor's browser spotted it first and the swarm verified it. */
+      source?: "swarm" | "browser";
     }
   | { type: "explain"; findingId: string; text: string; source: string }
   | {
@@ -31,7 +33,8 @@ export type HubEvent =
     }
   | { type: "memory"; codeHash: string; reportId: number }
   | { type: "attack"; kind: string; stage: string; detail?: string; hash?: string; ts: number }
-  | { type: "log"; level: "info" | "warn"; message: string; ts: number };
+  | { type: "log"; level: "info" | "warn"; message: string; ts: number }
+  | { type: "watchers"; count: number; tips: number; verified: number };
 
 /** In-process event bus with a replay buffer for newly connected dashboards. */
 export class Hub extends EventEmitter {

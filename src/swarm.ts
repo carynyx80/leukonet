@@ -205,6 +205,49 @@ export class Swarm {
     if (inScope && owner) void owner.file(f, id);
   }
 
+  /**
+   * A tip from a visitor's browser, which runs the same detectors on its own
+   * copy of the chain. Tips are untrusted: the sentinel that owns the detector
+   * re-verifies the evidence on chain before anything is filed or staked.
+   */
+  async tip(f: Finding): Promise<{ accepted: boolean; reason: string; findingId?: string }> {
+    const owner = this.sentinels.find((s) => s.persona.name === DETECTOR_OWNER[f.detector]);
+    if (!owner) return { accepted: false, reason: "No sentinel handles that kind of finding." };
+    const key = `${f.target}|${f.category}`;
+    const last = this.seen.get(key);
+    if (last && Date.now() - last < 10 * 60_000) return { accepted: false, reason: "The swarm already has this one." };
+
+    const demoSet = new Set(readDemoState().accounts);
+    const e = f.evidence ?? {};
+    const involved = [f.target, e.victim, e.payee, e.creator, ...(Array.isArray(e.victims) ? e.victims : [])].filter(Boolean).map(String);
+    const inScope = process.env.FLAG_SCOPE === "all" || involved.some((id) => this.isDemo(id, demoSet));
+    if (!inScope) return { accepted: false, reason: "Outside the demo: observed only, never reported." };
+
+    if (!(await owner.check(f.category, f.target, e))) {
+      return { accepted: false, reason: `${owner.persona.name} could not confirm it on chain.` };
+    }
+    // Verified: same path as the swarm's own findings.
+    this.seen.set(key, Date.now());
+    const id = `f${++this.findingSeq}-${this.opts.network}`;
+    this.hub.publish({
+      type: "finding",
+      id,
+      sentinel: owner.persona.name,
+      detector: f.detector,
+      category: f.category,
+      target: f.target,
+      severity: f.severity,
+      reason: f.reason,
+      evidence: e,
+      scope: "filed",
+      network: this.opts.network,
+      ts: Date.now(),
+      source: "browser",
+    });
+    void owner.file({ ...f, evidence: e }, id);
+    return { accepted: true, reason: `${owner.persona.name} verified it on chain and is reporting it.`, findingId: id };
+  }
+
   /** Polls the registry and lets every sentinel weigh in on open reports. */
   private pollRegistry() {
     const tick = async () => {

@@ -36,7 +36,7 @@ export function wasmExports(code: Uint8Array): string[] {
       const count = leb();
       for (let i = 0; i < count; i++) {
         const len = leb();
-        const name = Buffer.from(code.subarray(p, p + len)).toString();
+        const name = new TextDecoder().decode(code.subarray(p, p + len));
         p += len;
         const kind = code[p++];
         leb(); // index

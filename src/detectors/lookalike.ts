@@ -1,4 +1,4 @@
-import type { Tx } from "../stream.js";
+import type { Tx } from "../blocks.js";
 import type { Detector, Finding, Thresholds } from "./types.js";
 
 /** Characters scammers swap for look-alikes. */

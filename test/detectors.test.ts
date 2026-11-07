@@ -7,12 +7,13 @@ import { drainerDetector, keyHijackDetector } from "../src/detectors/sweep.js";
 import { rogueAgentDetector } from "../src/detectors/rogue.js";
 import { maliciousContractDetector, wasmExports } from "../src/detectors/contract.js";
 import { DEFAULT_THRESHOLDS as T, type ChainView } from "../src/detectors/types.js";
-import type { Tx, TxAction } from "../src/stream.js";
+import type { Tx, TxAction } from "../src/blocks.js";
 import { near } from "../src/near.js";
 
 const chain = (balances: Record<string, bigint> = {}, methods: Record<string, string[]> = {}): ChainView => ({
   balance: async (id) => balances[id] ?? null,
   contractMethods: async (id) => methods[id] ?? null,
+  txMatches: async () => true,
 });
 
 let n = 0;

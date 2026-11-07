@@ -1,4 +1,4 @@
-import type { Tx } from "../stream.js";
+import type { Tx } from "../blocks.js";
 
 /** Must match the contract's `Category` enum. */
 export type Category = "Drainer" | "KeyHijack" | "MaliciousContract" | "RogueAgent" | "Lookalike" | "Other";
@@ -27,6 +27,8 @@ export interface ChainView {
   balance(accountId: string): Promise<bigint | null>;
   /** Exported function names of the contract deployed on an account. */
   contractMethods(accountId: string): Promise<string[] | null>;
+  /** True when transaction `hash` exists and went from `sender` to `receiver`. */
+  txMatches(hash: string, sender: string, receiver: string): Promise<boolean>;
 }
 
 export interface Detector {

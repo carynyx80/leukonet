@@ -4,6 +4,8 @@ import { useAgents, type AgentMind } from "./useAgents";
 import { ThreatMap } from "./ThreatMap";
 import { AGENTS, agentByName, glyph } from "./agents";
 import { API } from "./api";
+import { useWatcher } from "./useWatcher";
+import type { TipResult, WatcherStats } from "./watcher";
 
 const fmtNear = (y: string | number | bigint, d = 3) => (Number(BigInt(String(y)) / 10n ** 18n) / 1e6).toFixed(d);
 const time = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
@@ -175,7 +177,8 @@ function Logo() {
 // ================================================================================
 
 export function App() {
-  const [s, subscribe] = useSwarm();
+  const [s, subscribe, inject, watchers] = useSwarm();
+  const cell = useWatcher(s.meta, inject);
   const now = useNow();
   const wide = useWide();
   const meta = s.meta;
@@ -226,21 +229,22 @@ export function App() {
           {meta && <ThreatMap sentinelAccounts={meta.sentinelAccounts} reports={s.reports} subscribe={subscribe} busy={busy} focusX={wide ? 0.66 : 0.5} />}
         </div>
         <div className="hero-side">
-          <Story s={s} minds={minds} txUrl={txUrl} accUrl={accUrl} now={now} />
+          <Story s={s} minds={minds} txUrl={txUrl} accUrl={accUrl} now={now} cell={cell.stats} lastTip={cell.lastTip} />
           <div className="readouts" aria-label="Live numbers">
             <div>
-              <b className="mono">{lastBlock ? lastBlock.height.toLocaleString() : "…"}</b>
+              <b className="mono">{(cell.stats?.height || lastBlock?.height)?.toLocaleString() ?? "…"}</b>
               <span>latest block</span>
             </div>
             <div>
-              <b className="mono">{tps.toFixed(1)}</b>
-              <span>tx / second read</span>
+              <b className="mono">{cell.stats ? cell.stats.txs.toLocaleString() : tps.toFixed(1)}</b>
+              <span>{cell.stats ? "tx checked by your browser" : "tx / second read"}</span>
             </div>
             <div>
               <b className="mono hot">{caught}</b>
               <span>scams caught</span>
             </div>
           </div>
+          <CellStatus stats={cell.stats} watchers={watchers} lastTip={cell.lastTip} now={now} />
         </div>
         <p className="hero-hint">Each streak is a real testnet transaction flowing to the agent that inspects it. Hover a dot for details.</p>
       </header>
@@ -316,7 +320,23 @@ export function App() {
 
 const PHASES = ["Attack", "Spotted", "Reported", "Voted", "Confirmed", "Blocked"] as const;
 
-function Story({ s, minds, txUrl, accUrl, now }: { s: SwarmState; minds: Record<string, AgentMind>; txUrl: (h: string) => string; accUrl: (a: string) => string; now: number }) {
+function Story({
+  s,
+  minds,
+  txUrl,
+  accUrl,
+  now,
+  cell,
+  lastTip,
+}: {
+  s: SwarmState;
+  minds: Record<string, AgentMind>;
+  txUrl: (h: string) => string;
+  accUrl: (a: string) => string;
+  now: number;
+  cell: WatcherStats | null;
+  lastTip: (TipResult & { at: number }) | null;
+}) {
   const [err, setErr] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<number>(0);
   const meta = s.meta;
@@ -334,8 +354,9 @@ function Story({ s, minds, txUrl, accUrl, now }: { s: SwarmState; minds: Record<
   const start = steps.find((e) => e.stage === "start");
   const running = !!s.attackRunning;
   const lag = s.blocks[s.blocks.length - 1]?.lag ?? 0;
-  // A simulation only works if the swarm keeps up with the chain; say so instead of failing after 75s.
-  const behind = lag > 15;
+  // A simulation needs someone watching the chain in real time: the server, or this browser.
+  const browserReady = !!cell && cell.running && cell.blocks > 2 && cell.lag <= 5 && !cell.error;
+  const behind = lag > 15 && !browserReady;
   const showMission = !!start && (running || (start.ts !== dismissed && now - start.ts < 10 * 60_000));
 
   if (!showMission) {
@@ -393,6 +414,7 @@ function Story({ s, minds, txUrl, accUrl, now }: { s: SwarmState; minds: Record<
   const label = meta?.attacks.find((a) => a.kind === kind)?.label ?? kind;
   const target = verdict?.detail?.split(" ")[0] ?? "";
   const mind = minds[catcher];
+  const myTip = lastTip && lastTip.at >= t0 ? lastTip : null;
   const narration = verdict
     ? null
     : mind && mind.mood !== "watching" && now - mind.at < 8000
@@ -450,6 +472,15 @@ function Story({ s, minds, txUrl, accUrl, now }: { s: SwarmState; minds: Record<
         })}
       </div>
 
+      {myTip && (
+        <div className={`your-catch ${myTip.accepted ? "" : "dup"}`}>
+          <span className="cell-dot" aria-hidden="true" />
+          <p>
+            {myTip.accepted ? <b>Your browser spotted it first.</b> : <b>Your browser spotted it too.</b>} {myTip.reason}
+          </p>
+        </div>
+      )}
+
       {narration && (
         <div className="narration">
           {narration.who && <Avatar name={narration.who} size={22} />}
@@ -488,6 +519,26 @@ function Story({ s, minds, txUrl, accUrl, now }: { s: SwarmState; minds: Record<
           ))}
         </div>
       </details>
+    </div>
+  );
+}
+
+/** "Your browser is a white blood cell": what this tab is doing for the swarm. */
+function CellStatus({ stats, watchers, lastTip, now }: { stats: WatcherStats | null; watchers: number; lastTip: (TipResult & { at: number }) | null; now: number }) {
+  if (!stats) return null;
+  const healthy = stats.running && !stats.error && stats.lag <= 5;
+  return (
+    <div className={`cell ${healthy ? "" : "warn"}`} role="status">
+      <span className="cell-dot" aria-hidden="true" />
+      <div>
+        <b>Your browser is a white blood cell.</b>
+        <span>
+          {healthy ? `It reads every block itself and tips the swarm when it spots a scam.` : `Reconnecting to the chain…`}{" "}
+          {watchers > 1 ? `${watchers} browsers are watching right now.` : "You're the only one watching right now."}
+          {stats.tipsVerified > 0 ? ` ${stats.tipsVerified} of your tips verified.` : ""}
+          {lastTip && now - lastTip.at < 20_000 && lastTip.accepted ? " Your latest tip is being reported." : ""}
+        </span>
+      </div>
     </div>
   );
 }

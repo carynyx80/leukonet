@@ -57,6 +57,51 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+// ----- browser watchers ---------------------------------------------------------
+// Every open dashboard streams the chain itself and can send tips. Tips are
+// re-verified on chain by a sentinel before anything is filed (see Swarm.tip).
+
+let watchers = 0;
+let tipsReceived = 0;
+let tipsVerified = 0;
+const announceWatchers = () => hub.publish({ type: "watchers", count: watchers, tips: tipsReceived, verified: tipsVerified });
+const tipBudget = new Map<string, { n: number; reset: number }>();
+const DETECTORS = new Set(["drainer", "key_hijack", "malicious_contract", "immune_memory", "rogue_agent", "lookalike"]);
+const CATEGORIES = new Set(["Drainer", "KeyHijack", "MaliciousContract", "RogueAgent", "Lookalike"]);
+const ACCOUNT = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+
+function readBody(req: http.IncomingMessage, limit = 8_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > limit) {
+        reject(new Error("too large"));
+        req.destroy();
+      } else chunks.push(c);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString()));
+    req.on("error", reject);
+  });
+}
+
+/** Shape-checks a tip; returns a clean finding or a reason it was refused. */
+function parseTip(raw: any): { finding?: any; error?: string } {
+  if (!raw || typeof raw !== "object") return { error: "Expected a JSON object." };
+  const { detector, category, target, severity, reason, evidence } = raw;
+  if (!DETECTORS.has(detector)) return { error: "Unknown detector." };
+  if (!CATEGORIES.has(category)) return { error: "Unknown category." };
+  if (typeof target !== "string" || target.length < 2 || target.length > 64 || !ACCOUNT.test(target)) return { error: "Bad account id." };
+  if (!Number.isInteger(severity) || severity < 1 || severity > 10) return { error: "Severity must be 1-10." };
+  if (typeof reason !== "string" || reason.length > 400) return { error: "Reason missing or too long." };
+  if (!evidence || typeof evidence !== "object" || JSON.stringify(evidence).length > 2000) return { error: "Evidence missing or too large." };
+  if (!Array.isArray(evidence.txs) || !evidence.txs.every((h: unknown) => typeof h === "string" && /^[1-9A-HJ-NP-Za-km-z]{40,50}$/.test(h))) {
+    return { error: "Evidence needs transaction hashes." };
+  }
+  return { finding: { detector, category, target, severity, reason, evidence } };
+}
+
 function json(res: http.ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
   res.end(JSON.stringify(body, (_k, v) => (typeof v === "bigint" ? v.toString() : v)));
@@ -87,10 +132,14 @@ const server = http.createServer(async (req, res) => {
       hub.on("event", onEvent);
       hub.on("state", onState);
       const ping = setInterval(() => res.write(": ping\n\n"), 15000);
+      watchers++;
+      announceWatchers();
       req.on("close", () => {
         hub.off("event", onEvent);
         hub.off("state", onState);
         clearInterval(ping);
+        watchers = Math.max(0, watchers - 1);
+        announceWatchers();
       });
       return;
     }
@@ -111,12 +160,35 @@ const server = http.createServer(async (req, res) => {
           sentinelAccounts: Object.fromEntries(swarm.sentinels.map((s) => [s.persona.name, s.id])),
           nearAi: !!config.nearAiKey,
           watchMainnet: process.env.WATCH_MAINNET === "1",
+          watchers: { count: watchers, tips: tipsReceived, verified: tipsVerified },
+          dataUrl: config.dataUrl,
+          rpcUrl: config.rpcUrl,
         },
       });
     }
     const check = url.pathname.match(/^\/api\/check\/([a-z0-9._-]+)$/);
     if (check) {
       return json(res, 200, await checkBeforePay(check[1], { registry: config.registry, rpcUrl: config.rpcUrl }));
+    }
+    if (url.pathname === "/api/tip" && req.method === "POST") {
+      const ip = String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "?").split(",")[0].trim();
+      const b = tipBudget.get(ip) ?? { n: 0, reset: Date.now() + 60_000 };
+      if (Date.now() > b.reset) Object.assign(b, { n: 0, reset: Date.now() + 60_000 });
+      if (++b.n > 20) return json(res, 429, { accepted: false, reason: "Too many tips from this browser. Try again in a minute." });
+      tipBudget.set(ip, b);
+      let raw: any;
+      try {
+        raw = JSON.parse(await readBody(req));
+      } catch {
+        return json(res, 400, { accepted: false, reason: "Body must be JSON under 8 KB." });
+      }
+      const { finding, error } = parseTip(raw);
+      if (!finding) return json(res, 400, { accepted: false, reason: error });
+      tipsReceived++;
+      const result = await swarm.tip(finding);
+      if (result.accepted) tipsVerified++;
+      announceWatchers();
+      return json(res, 200, result);
     }
     const attack = url.pathname.match(/^\/api\/attack\/([a-z_]+)$/);
     if (attack && req.method === "POST") {

@@ -1,81 +1,13 @@
 import { EventEmitter } from "node:events";
-import { baseEncode } from "near-api-js";
+import { parseAction, parseNeardataBlock, type ParsedBlock, type Tx } from "./blocks.js";
 import { rpc } from "./near.js";
 import { config, withFastnearKey } from "./config.js";
 
-export type ActionKind =
-  | "CreateAccount"
-  | "Transfer"
-  | "FunctionCall"
-  | "AddKey"
-  | "DeleteKey"
-  | "DeployContract"
-  | "DeleteAccount"
-  | "Other";
+export type { ActionKind, Tx, TxAction } from "./blocks.js";
 
-export interface TxAction {
-  kind: ActionKind;
-  deposit?: bigint;
-  method?: string;
-  args?: any;
-  publicKey?: string;
-  fullAccess?: boolean;
-  /** For DeployContract: sha256 of the code, base58 (the RPC only returns the hash). */
-  codeHash?: string;
-  beneficiary?: string;
-}
-
-export interface Tx {
-  hash: string;
-  signer: string;
-  receiver: string;
-  publicKey: string;
-  actions: TxAction[];
-  height: number;
-  timestampMs: number;
-  /** Signer's balance right after the transaction was processed (from neardata state changes). */
-  signerBalanceAfter?: bigint;
-}
-
-export interface BlockEvent {
-  height: number;
-  hash: string;
-  timestampMs: number;
-  txs: Tx[];
+export interface BlockEvent extends ParsedBlock {
   /** How many blocks behind the chain head we are. */
   lag: number;
-}
-
-function parseAction(raw: any): TxAction {
-  if (raw === "CreateAccount") return { kind: "CreateAccount" };
-  const [kind, body] = Object.entries(raw)[0] as [string, any];
-  switch (kind) {
-    case "Transfer":
-      return { kind, deposit: BigInt(body.deposit) };
-    case "FunctionCall": {
-      let args: any = undefined;
-      try {
-        args = JSON.parse(Buffer.from(body.args, "base64").toString());
-      } catch {
-        args = undefined;
-      }
-      return { kind, method: body.method_name, args, deposit: BigInt(body.deposit ?? 0) };
-    }
-    case "AddKey":
-      return {
-        kind,
-        publicKey: body.public_key,
-        fullAccess: body.access_key?.permission === "FullAccess",
-      };
-    case "DeleteKey":
-      return { kind, publicKey: body.public_key };
-    case "DeployContract":
-      return { kind, codeHash: baseEncode(Buffer.from(body.code, "base64")) };
-    case "DeleteAccount":
-      return { kind, beneficiary: body.beneficiary_id };
-    default:
-      return { kind: "Other" };
-  }
 }
 
 /** Same block via plain RPC (block + its chunks), used when neardata rate-limits us. */
@@ -119,36 +51,8 @@ async function fetchBlock(height: number, dataUrl: string, rpcUrl?: string): Pro
     (e as any).retryAfterMs = Number(res.headers.get("retry-after") ?? 0) * 1000;
     throw e;
   }
-  const data: any = await res.json();
   // Heights can be skipped by the chain; neardata returns null for those.
-  if (!data) return null;
-  const timestampMs = Math.floor(Number(data.block.header.timestamp_nanosec) / 1e6);
-  // tx hash + account -> balance after the transaction debited it
-  const after = new Map<string, bigint>();
-  for (const shard of data.shards ?? []) {
-    for (const sc of shard.state_changes ?? []) {
-      if (sc.type === "account_update" && sc.cause?.type === "transaction_processing") {
-        after.set(`${sc.cause.tx_hash}|${sc.change.account_id}`, BigInt(sc.change.amount));
-      }
-    }
-  }
-  const txs: Tx[] = [];
-  for (const shard of data.shards ?? []) {
-    for (const entry of shard.chunk?.transactions ?? []) {
-      const t = entry.transaction;
-      txs.push({
-        hash: t.hash,
-        signer: t.signer_id,
-        receiver: t.receiver_id,
-        publicKey: t.public_key,
-        actions: (t.actions ?? []).map(parseAction),
-        height,
-        timestampMs,
-        signerBalanceAfter: after.get(`${t.hash}|${t.signer_id}`),
-      });
-    }
-  }
-  return { height, hash: data.block.header.hash, timestampMs, txs };
+  return parseNeardataBlock(await res.json());
 }
 
 /**

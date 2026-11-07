@@ -1,4 +1,4 @@
-import { fmtNear, near } from "../near.js";
+import { fmtNear, near } from "../units.js";
 import type { Detector, Finding, Thresholds } from "./types.js";
 
 const median = (xs: bigint[]) => {
@@ -48,9 +48,11 @@ export function rogueAgentDetector(t: Thresholds, minAmount = near(0.2)): Detect
       history.set(tx.signer, h);
       return findings;
     },
-    async verify(f) {
+    async verify(f, chain) {
       const e = f.evidence;
-      return Number(e?.history) >= t.rogueMinHistory && Number(e?.multiple) >= t.rogueMultiple;
+      if (!(Number(e?.history) >= t.rogueMinHistory && Number(e?.multiple) >= t.rogueMultiple)) return false;
+      // The spike payment itself must exist on chain, from this agent to the claimed payee.
+      return Array.isArray(e?.txs) && typeof e.payee === "string" && chain.txMatches(e.txs[0], f.target, e.payee);
     },
   };
 }

@@ -1,5 +1,5 @@
-import type { Tx } from "../stream.js";
-import { fmtNear, rpc } from "../near.js";
+import type { Tx } from "../blocks.js";
+import { fmtNear } from "../units.js";
 import type { ChainView, Detector, Finding, Thresholds } from "./types.js";
 
 interface Sweep {
@@ -24,17 +24,6 @@ async function asSweep(tx: Tx, chain: ChainView, share: number): Promise<Sweep |
   const total = amount + remaining;
   if (Number((amount * 1000n) / total) / 1000 < share) return null;
   return { tx: tx.hash, from: tx.signer, to: tx.receiver, amount, remaining, height: tx.height, publicKey: tx.publicKey };
-}
-
-/** Confirms a transaction really happened as claimed. */
-export async function txMatches(hash: string, sender: string, receiver: string): Promise<boolean> {
-  try {
-    const r: any = await rpc("tx", { tx_hash: hash, sender_account_id: sender, wait_until: "NONE" });
-    const t = r.transaction;
-    return t.signer_id === sender && t.receiver_id === receiver;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -79,12 +68,12 @@ export function keyHijackDetector(t: Thresholds): Detector {
       };
       return [f];
     },
-    async verify(f) {
+    async verify(f, chain) {
       const e = f.evidence;
       if (!e?.txs?.length || e.blocksAfterKey > t.hijackWindow) return false;
       const share = Number(BigInt(e.amount)) / (Number(BigInt(e.amount)) + Number(BigInt(e.remaining)));
       if (share < t.sweepShare) return false;
-      return txMatches(e.txs[1], e.victim, f.target);
+      return chain.txMatches(e.txs[1], e.victim, f.target);
     },
   };
 }
@@ -122,11 +111,11 @@ export function drainerDetector(t: Thresholds, windowBlocks = 600): Detector {
       };
       return [f];
     },
-    async verify(f) {
+    async verify(f, chain) {
       const e = f.evidence;
       if (!Array.isArray(e?.victims) || new Set(e.victims).size < t.drainerVictims) return false;
       if (!e.shares.every((s: number) => s >= t.sweepShare)) return false;
-      const checks = await Promise.all(e.txs.map((h: string, i: number) => txMatches(h, e.victims[i], f.target)));
+      const checks = await Promise.all(e.txs.map((h: string, i: number) => chain.txMatches(h, e.victims[i], f.target)));
       return checks.every(Boolean);
     },
   };

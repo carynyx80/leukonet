@@ -8,6 +8,14 @@ export function chainView(rpcUrl = config.rpcUrl): ChainView {
   const methods = new Map<string, { at: number; value: string[] | null }>();
   return {
     balance: (id) => balanceOf(id, rpcUrl),
+    async txMatches(hash, sender, receiver) {
+      try {
+        const r: any = await rpc("tx", { tx_hash: hash, sender_account_id: sender, wait_until: "NONE" }, rpcUrl);
+        return r.transaction?.signer_id === sender && r.transaction?.receiver_id === receiver;
+      } catch {
+        return false;
+      }
+    },
     async contractMethods(accountId) {
       const hit = methods.get(accountId);
       if (hit && Date.now() - hit.at < 60_000) return hit.value;
