@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { config, ROOT } from "./config.js";
-import { view } from "./near.js";
-import { BlockStream, type BlockEvent, type Tx } from "./stream.js";
+import { view, rpc, onLanded } from "./near.js";
+import { BlockStream, fetchBlock, type BlockEvent, type Tx } from "./stream.js";
 import { chainView } from "./chain.js";
 import type { Hub } from "./hub.js";
 import { ImmuneMemory } from "./memory.js";
@@ -45,28 +45,8 @@ export function addDemoAccounts(...ids: string[]) {
   writeDemoState(s);
 }
 
-/** Well-known mainnet names, protected in watch-only mode. */
-export const MAINNET_PROTECTED = [
-  "wrap.near",
-  "ref-finance.near",
-  "v2.ref-finance.near",
-  "app.ref-finance.near",
-  "intents.near",
-  "meta-pool.near",
-  "linear-protocol.near",
-  "burrow.near",
-  "token.sweat",
-  "usdt.tether-token.near",
-  "aurora",
-  "near",
-  "relay.aurora",
-  "hot.tg",
-  "game.hot.tg",
-  "nearkat.near",
-  "social.near",
-  "lockup.near",
-  "poolv1.near",
-];
+export { MAINNET_PROTECTED } from "./protected.js";
+import { MAINNET_PROTECTED } from "./protected.js";
 
 const DETECTOR_OWNER: Record<string, string> = {
   drainer: "neutrophil",
@@ -94,6 +74,9 @@ export class Swarm {
   private busy = false;
   private finalizing = new Set<number>();
   private pollCount = 0;
+  /** Heights already inspected (by the stream or the priority lane), so none is inspected twice. */
+  private done = new Set<number>();
+  private head = 0;
   private stream: BlockStream;
   private chain;
 
@@ -117,14 +100,39 @@ export class Swarm {
 
   async start() {
     this.stream.on("block", (b: BlockEvent) => {
+      this.head = Math.max(this.head, b.height + b.lag);
       this.queue.push(b);
       void this.drain();
     });
+    if (!this.opts.readOnly) onLanded((l) => void this.priority(l.blockHash, l.signer));
     this.stream.on("warn", (w) => this.hub.log(`[${this.opts.network}] ${w}`, "warn"));
     this.stream.on("error", (e) => this.hub.log(`[${this.opts.network}] stream stopped: ${e.message}`, "warn"));
     await this.stream.start();
     if (!this.opts.readOnly) this.pollRegistry();
     this.hub.log(`${this.opts.network} swarm watching${this.opts.readOnly ? " (read-only)" : ""} with ${this.sentinels.length} sentinels`);
+  }
+
+  /**
+   * Priority lane: a demo transaction just landed in this block. Read it (and the
+   * next one, where its receipts run) right away instead of waiting for the stream,
+   * which on a rate-limited host can be hundreds of blocks behind or skip ahead.
+   */
+  private async priority(blockHash: string, signer: string) {
+    const demo = new Set(readDemoState().accounts);
+    if (!this.isDemo(signer, demo) || this.sentinels.some((s) => s.id === signer)) return;
+    try {
+      const height: number = (await rpc("block", { block_id: blockHash })).header.height;
+      for (const h of [height, height + 1]) {
+        if (this.done.has(h)) continue;
+        const b = await fetchBlock(h, this.opts.dataUrl, this.opts.rpcUrl).catch(() => null);
+        if (b && !this.done.has(h)) {
+          this.queue.unshift({ ...b, lag: Math.max(0, this.head - h) });
+          void this.drain();
+        }
+      }
+    } catch (e: any) {
+      this.hub.log(`priority lane: ${e.message}`, "warn");
+    }
   }
 
   /** Blocks are processed strictly in order so detectors see history correctly. */
@@ -134,6 +142,9 @@ export class Swarm {
     try {
       while (this.queue.length) {
         const b = this.queue.shift()!;
+        if (this.done.has(b.height)) continue;
+        this.done.add(b.height);
+        if (this.done.size > 5000) this.done.delete(this.done.values().next().value!);
         this.hub.publish({ type: "block", height: b.height, txs: b.txs.length, lag: b.lag, ts: b.timestampMs, network: this.opts.network });
         const demo = readDemoState();
         const demoSet = new Set(demo.accounts);

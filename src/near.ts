@@ -153,6 +153,23 @@ export function serial<T>(accountId: string, job: () => Promise<T>): Promise<T> 
   return next;
 }
 
+/**
+ * Every transaction this process signs is announced here with the block it
+ * landed in. The swarm uses it as a priority lane: it reads that exact block
+ * straight away, so a backlog in the block stream can never hide a demo attack.
+ */
+type Landed = { hash: string; signer: string; blockHash: string };
+const landedListeners: ((l: Landed) => void)[] = [];
+export function onLanded(fn: (l: Landed) => void) {
+  landedListeners.push(fn);
+}
+export function landed(signer: string, res: any) {
+  const blockHash = res?.transaction_outcome?.block_hash;
+  const hash = res?.transaction?.hash ?? res?.transaction_outcome?.id;
+  if (!blockHash || !hash) return;
+  for (const fn of landedListeners) fn({ hash, signer, blockHash });
+}
+
 export interface CallResult {
   hash: string;
   value: any;
@@ -172,6 +189,7 @@ export async function call(
       actions: [actions.functionCall(method, args, gas, deposit)],
       waitUntil: "EXECUTED_OPTIMISTIC",
     } as any);
+    landed(account.accountId, res);
     const hash = res.transaction?.hash ?? res.transaction_outcome?.id;
     let value: any = undefined;
     const ok = res.status?.SuccessValue;
@@ -193,6 +211,7 @@ export async function transfer(account: Account, receiverId: string, amount: big
       actions: [actions.transfer(amount)],
       waitUntil: "EXECUTED_OPTIMISTIC",
     } as any);
+    landed(account.accountId, res);
     return res.transaction?.hash;
   });
 }

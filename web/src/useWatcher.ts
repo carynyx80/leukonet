@@ -49,6 +49,8 @@ export function useWatcher(meta: Meta | null, inject: (e: Ev) => void) {
         setStats({ ...w.stats });
       },
     }).start();
+    // Handy in devtools: window.leukonetCell.stats shows what this tab has checked.
+    (window as any).leukonetCell = w;
     return () => w.stop();
   }, [started, inject]);
 

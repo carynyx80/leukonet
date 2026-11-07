@@ -36,7 +36,7 @@ async function fetchBlockRpc(height: number, rpcUrl?: string): Promise<Omit<Bloc
   return { height, hash: block.header.hash, timestampMs, txs };
 }
 
-async function fetchBlock(height: number, dataUrl: string, rpcUrl?: string): Promise<Omit<BlockEvent, "lag"> | null> {
+export async function fetchBlock(height: number, dataUrl: string, rpcUrl?: string): Promise<Omit<BlockEvent, "lag"> | null> {
   const url = withFastnearKey(`${dataUrl}/v0/block/${height}`);
   let res = await fetch(url);
   // Rate limited: wait it out first; the RPC fallback only adds load to an already throttled client.

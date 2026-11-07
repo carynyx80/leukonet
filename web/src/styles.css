@@ -291,6 +291,32 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
 .answer.bad b, .answer.bad .answer-icon { color: var(--threat); }
 .answer.bad .answer-icon { background: color-mix(in srgb, var(--threat) 16%, transparent); }
 
+/* mainnet radar */
+.radar-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .radar-grid { grid-template-columns: 1fr; } }
+.radar-live, .radar-name { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; display: grid; gap: 14px; align-content: start; min-width: 0; }
+.radar-live .btn { justify-self: start; }
+.btn.stop { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+.radar-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0; }
+@media (max-width: 520px) { .radar-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.radar-stats div { display: grid; }
+.radar-stats dt { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.radar-stats dd { margin: 0; font-family: var(--f-display); font-size: 30px; font-weight: 800; line-height: 1.05; }
+.hits { display: grid; gap: 8px; max-height: 320px; overflow: auto; }
+.hit { display: grid; gap: 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--pending) 45%, var(--line)); background: color-mix(in srgb, var(--pending) 6%, transparent); min-width: 0; }
+.hit a { overflow-wrap: anywhere; font-size: 13px; }
+.hit small { color: var(--ink-2); font-size: 12.5px; overflow-wrap: anywhere; }
+.hit-kind { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--pending); }
+.radar-name b { font-family: var(--f-display); font-weight: 800; font-size: 26px; line-height: 1.05; }
+.radar-name p { margin: 0; }
+.radar-name input { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; font-family: var(--f-mono); font-size: 16px; min-width: 0; }
+.radar-name input:focus { outline: none; border-color: var(--accent); }
+.verdict-line { margin: 0; padding: 10px 12px; border-radius: 12px; font-size: 14px; overflow-wrap: anywhere; }
+.verdict-line.bad { color: var(--threat); background: color-mix(in srgb, var(--threat) 8%, transparent); border: 1px solid var(--threat); }
+.verdict-line.good { color: var(--safe); background: color-mix(in srgb, var(--safe) 7%, transparent); border: 1px solid var(--safe); }
+.examples.left { justify-content: flex-start; margin-top: 0; }
+.small { font-size: 13px; }
+
 /* registry */
 .ledger { display: grid; gap: 8px; }
 .entry { border-radius: 14px; background: var(--surface); border: 1px solid var(--line); overflow: hidden; }

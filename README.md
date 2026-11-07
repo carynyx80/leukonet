@@ -7,6 +7,7 @@ Tracks: **AI Security & Defense**, **AI Swarms**, **Agent Economy**, **Open Inno
 
 | | |
 |---|---|
+| **Live demo** | **https://leukonet.vercel.app** |
 | Registry contract (testnet) | [`registry.leukonet-mw43jm6i.testnet`](https://testnet.nearblocks.io/address/registry.leukonet-mw43jm6i.testnet) |
 | Stack | Rust (near-sdk 5) · TypeScript (near-api-js 7) · React · FastNear neardata · NEAR AI Cloud |
 | License | MIT |
@@ -24,6 +25,7 @@ AI agents are starting to hold wallets and pay each other. Wallet drainers, stol
 3. **Verify.** The other sentinels re-check the evidence on chain with their **own thresholds** and vote with their own stake. If the swarm disagrees, the wrong side loses its stake to the right side. False accusations cost money.
 4. **Protect.** Confirmed threats go into a public registry. One free view call, `is_safe(account_id)`, tells a wallet or agent whether to pay.
 5. **Remember.** Once a scam contract is confirmed, its code hash goes into **immune memory**. The same code deployed under any new name is caught on sight.
+6. **Recruit.** Every person who opens the site becomes part of the immune system: their browser reads the chain itself, runs the same detectors, and tips the swarm. See below.
 
 On testnet the whole loop takes about **10–15 seconds** from the attack to the onchain verdict. That's measured in our runs: drainer 10s, key hijack 14s, scam contract 14s, and a scam-code redeploy caught from memory 9s.
 
@@ -39,6 +41,22 @@ On testnet the whole loop takes about **10–15 seconds** from the attack to the
 
 Each sentinel is its **own NEAR account** with its own bond. They share no keys.
 
+## Every visitor is a white blood cell
+
+Open https://leukonet.vercel.app and your browser joins the swarm. It streams NEAR blocks straight from FastNear's neardata over **your own connection**, runs the **exact same detector code** as the sentinels (`src/detectors/*`, shared by server and browser), and sends anything it finds to the swarm as a **tip** (`POST /api/tip`). The page shows how many transactions your browser has checked, how many browsers are watching right now, and credits you when your tip leads to a catch.
+
+Why this matters:
+
+- **The more people watch, the stronger it gets.** Watching is spread across every visitor instead of resting on one server, so no single machine or rate limit is a point of failure. A free data feed that throttles one cloud server serves thousands of browsers comfortably.
+- **Tips are untrusted.** A tip carries transaction hashes, not conclusions. The sentinel that owns that kind of finding re-checks it **on chain, with its own thresholds** (the transactions exist, go between the claimed accounts, the accused account exists, the code exposes lure methods) before it files or stakes anything. A forged tip costs the forger nothing and costs the swarm one cheap lookup.
+- **Abuse-resistant by construction.** Tips are shape-checked (known detector and category, valid account id, real-looking tx hashes, 8 KB cap), rate-limited per address (20 a minute), de-duplicated, and limited to the demo's own accounts, so a tip can never get a stranger accused.
+
+Devtools: `window.leukonetCell.stats` shows what your tab has checked.
+
+## Mainnet radar
+
+The same detectors, pointed at **NEAR mainnet**, from your browser, read-only (section *Mainnet radar* on the site). One click starts a live scan for the two highest-signal patterns: new accounts named to imitate famous ones (`ref-flnance.near` vs `ref-finance.near`, `rnintbase1.near` vs `mintbase1.near`, 28 protected names) and contracts exposing airdrop-lure methods. Findings are shown with explorer links and **never reported**. Drainer and rogue-agent patterns are deliberately left out on mainnet: exchanges sweeping deposit accounts look like drainers, and flagging them would be wrong. There is also an instant *"Would this name fool people?"* check that runs the look-alike logic on any name you type.
+
 ## How NEAR is used
 
 - **Registry contract** (`contracts/registry`, Rust). Bonds, staked reports, staked votes, finalisation with stake redistribution, and the public `is_safe` view. Everything happens onchain: every flag, vote and verdict has a transaction hash.
@@ -50,7 +68,9 @@ Each sentinel is its **own NEAR account** with its own bond. They share no keys.
 
 ## Try it: judge walkthrough
 
-You need Node ≥ 20 and Rust (with `rustup`). Everything runs on **testnet** and is free.
+**Fastest: the live site.** Open https://leukonet.vercel.app, pick a scam under *Release a scam on testnet*, and watch the six-step tracker go Attack → Spotted → Reported → Voted → Confirmed → Blocked. The swarm backend runs on a single shared cloud server whose free data feed is rate-limited; your browser's own watcher covers for it, and if neither is in sync the buttons say so instead of failing.
+
+**Fully local** (no shared limits). You need Node ≥ 20 and Rust (with `rustup`). Everything runs on **testnet** and is free.
 
 ```bash
 git clone <this repo> && cd leukonet
@@ -65,13 +85,13 @@ Then, in the browser at `http://localhost:8787`:
 
 | Do this | You should see |
 |---|---|
-| Open the page | **Threat map**: grey particles are live testnet transactions flowing in. The block number in the header ticks up about once a second. |
-| Click **Launch an attack → Wallet drainer** | The timeline shows three wallets being swept, each with a `tx ↗` link. |
-| Wait ~10–20 s | A **Drainer** report appears in *Reports in the registry*. Five vote chips turn ✓ one by one; on the map, cyan lines run from each sentinel to the drainer. Status becomes **Confirmed**. |
-| Look at the attack panel | **Payment blocked**: the guarded agent refused to pay the drainer. |
-| Paste the drainer's account into **Check before you pay** | `Do not pay … Drainer · risk 90/100`. |
-| Run **Airdrop scam contract** twice | First run: caught by `malicious_contract` (lure methods). The code hash appears in **Immune memory**. Second run: same code, new name, caught by `immune_memory`. |
+| Open the page | The live map: streaks are real testnet transactions flowing to the agent that inspects them. A green card says **"Your browser is a white blood cell"** and the *tx checked by your browser* counter climbs. |
+| Click **Wallet drainer** under *Release a scam on testnet* | The left column turns into a live mission: a stopwatch and six steps. Three wallets are swept (every step has a `tx ↗` link under *Every step*). |
+| Wait ~10–20 s | **Spotted** (often "Your browser spotted it first"), **Reported** (neutrophil stakes 0.02 NEAR), **Voted** (the four other agents re-check and confirm, one tile each), **Confirmed**, then **Blocked**: "Payment blocked: guarded payment agent refused to send 0.05 NEAR". |
+| Scroll to **Check before you pay**, click the drainer under *Try* | **Do not pay this account** · Drainer · risk 90/100. |
+| Release **Airdrop scam contract** twice | First run: caught by `malicious_contract` (lure methods); b-cell's card says it now remembers the code. Second run: same code, new name, caught from **immune memory**. |
 | Try **Key hijack**, **Rogue AI agent**, **Look-alike account** | Each is caught by its specialist and confirmed onchain. |
+| Open **Mainnet radar**, click **Scan NEAR mainnet live**; type `ref-flnance.near` | Live mainnet counters; the name check answers "Imitates ref-finance.near". |
 
 The same from the terminal (with `npm start` running):
 
@@ -79,7 +99,7 @@ The same from the terminal (with `npm start` running):
 npm run attack -- drainer            # also: key_hijack, malicious_contract, rogue_agent, lookalike
 npm run check -- <account.testnet>   # ✗ <account>: Drainer (risk 90/100, reports 0)
 npm run example:guarded-agent        # pays a safe supplier, refuses the latest confirmed threat
-npm test                             # 7 contract tests (Rust) + 7 detector tests (TypeScript)
+npm test                             # contract tests (Rust) + detector tests (TypeScript)
 ```
 
 Or check the deployed registry directly, without installing anything:

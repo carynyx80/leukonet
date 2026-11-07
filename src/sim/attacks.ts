@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT, config, saveKey, loadKey, hasKey } from "../config.js";
-import { Account, accountFor, accountFromKey, actions, balanceOf, call, near, newKeyPair, rpc, TGAS, transfer, view, serial } from "../near.js";
+import { Account, accountFor, accountFromKey, actions, balanceOf, call, near, newKeyPair, rpc, TGAS, transfer, view, serial, landed } from "../near.js";
 import { addDemoAccounts, readDemoState, writeDemoState } from "../swarm.js";
 import type { Hub } from "../hub.js";
 import { checkBeforePay, shouldBlock } from "../sdk/guard.js";
@@ -122,6 +122,7 @@ async function keyHijack(run: Run) {
       actions: [actions.addFullAccessKey(attackerKey.getPublicKey())],
       waitUntil: "EXECUTED_OPTIMISTIC",
     } as any);
+    landed(victim.accountId, r);
     return r.transaction.hash;
   });
   run.stage("attack", `Phished seed phrase used to add an attacker key to ${victim.accountId}`, addHash);
@@ -146,6 +147,7 @@ async function maliciousContract(run: Run, memory?: { knownBad: () => Map<string
       waitUntil: "EXECUTED_OPTIMISTIC",
     } as any),
   );
+  landed(scam.accountId, r);
   run.stage(
     "attack",
     reuse

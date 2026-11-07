@@ -5,7 +5,10 @@ import { ThreatMap } from "./ThreatMap";
 import { AGENTS, agentByName, glyph } from "./agents";
 import { API } from "./api";
 import { useWatcher } from "./useWatcher";
-import type { TipResult, WatcherStats } from "./watcher";
+import { BrowserWatcher, type TipResult, type WatcherStats } from "./watcher";
+import { MAINNET_PROTECTED } from "../../src/protected";
+import { imitates } from "../../src/detectors/lookalike";
+import type { Finding } from "../../src/detectors/types";
 
 const fmtNear = (y: string | number | bigint, d = 3) => (Number(BigInt(String(y)) / 10n ** 18n) / 1e6).toFixed(d);
 const time = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" });
@@ -90,6 +93,7 @@ const MENU_LINKS = [
   { href: "#top", label: "Live map", hint: "Watch the swarm and release a scam" },
   { href: "#swarm", label: "The swarm", hint: "Meet the five agents" },
   { href: "#check", label: "Check an account", hint: "Is it safe to pay?" },
+  { href: "#radar", label: "Mainnet radar", hint: "Scan the real NEAR, live" },
   { href: "#registry", label: "Registry", hint: "Every verdict, onchain" },
   { href: "#how", label: "How it works", hint: "Watch, flag, verify, protect" },
   { href: "#developers", label: "Developers", hint: "One call before every payment" },
@@ -273,6 +277,8 @@ export function App() {
         </section>
 
         <Checker reports={s.reports} protectedNames={meta?.protected ?? []} />
+
+        <Radar />
 
         <Registry reports={s.reports} sentinelAccounts={meta?.sentinelAccounts ?? {}} chain={s.chain} txUrl={txUrl} accUrl={accUrl} now={now} findings={s.findings} />
 
@@ -618,6 +624,113 @@ function AgentCard({
         </a>
       )}
     </article>
+  );
+}
+
+// ================================================================================
+// Mainnet radar: the same detectors, pointed at NEAR mainnet, read-only.
+
+const MAINNET = { dataUrl: "https://mainnet.neardata.xyz", rpcUrl: "https://rpc.mainnet.fastnear.com", explorer: "https://nearblocks.io" };
+
+function Radar() {
+  const [stats, setStats] = useState<WatcherStats | null>(null);
+  const [hits, setHits] = useState<(Finding & { at: number })[]>([]);
+  const [name, setName] = useState("");
+  const w = useRef<BrowserWatcher | null>(null);
+  const now = useNow();
+  useEffect(() => () => w.current?.stop(), []);
+
+  const toggle = () => {
+    if (w.current) {
+      w.current.stop();
+      w.current = null;
+      setStats((st) => (st ? { ...st, running: false } : st));
+      return;
+    }
+    w.current = new BrowserWatcher({
+      network: "mainnet",
+      dataUrl: MAINNET.dataUrl,
+      rpcUrl: MAINNET.rpcUrl,
+      api: API,
+      master: "",
+      readOnly: true,
+      only: ["lookalike", "malicious_contract"],
+      protectedNames: () => MAINNET_PROTECTED,
+      knownBadCode: () => new Map(),
+      onBlock: (_txs, st) => setStats({ ...st }),
+      onFinding: (f) => setHits((h) => [{ ...f, at: Date.now() }, ...h].slice(0, 20)),
+    }).start();
+    setStats({ ...w.current.stats });
+  };
+
+  const q = name.trim().toLowerCase();
+  const fooled = q.length > 3 ? imitates(q.includes(".") || q === "near" ? q : `${q}.near`, MAINNET_PROTECTED, 2) : null;
+  const running = !!stats?.running;
+
+  return (
+    <section className="section radar" id="radar">
+      <div className="section-h">
+        <span className="eyebrow">Mainnet radar</span>
+        <h2>Point the agents at the real NEAR</h2>
+        <p>
+          The same detectors, scanning NEAR mainnet live from your browser, read-only. They look for new accounts named to imitate famous ones and for
+          contracts built as airdrop lures. Anything found here is shown, never reported: no one is accused on chain.
+        </p>
+      </div>
+      <div className="radar-grid">
+        <div className="radar-live">
+          <button type="button" className={`btn ${running ? "stop" : ""}`} onClick={toggle}>
+            {running ? "Stop scanning" : "Scan NEAR mainnet live"}
+          </button>
+          {stats ? (
+            <dl className="radar-stats">
+              <div><dt>block</dt><dd className="mono">{stats.height ? stats.height.toLocaleString() : "…"}</dd></div>
+              <div><dt>mainnet tx checked</dt><dd className="mono">{stats.txs.toLocaleString()}</dd></div>
+              <div><dt>new accounts</dt><dd className="mono">{stats.accounts.toLocaleString()}</dd></div>
+              <div><dt>contracts deployed</dt><dd className="mono">{stats.deploys.toLocaleString()}</dd></div>
+            </dl>
+          ) : (
+            <p className="muted small">Uses your connection: about one block a second. Nothing is sent anywhere.</p>
+          )}
+          {stats?.error && running && <p className="muted small">Reconnecting to mainnet…</p>}
+          <div className="hits" aria-live="polite">
+            {hits.length === 0 && stats && <p className="muted small">{running ? "No imitations or lure contracts so far. Most blocks are honest." : "Scan stopped."}</p>}
+            {hits.map((h) => (
+              <article key={`${h.target}${h.at}`} className="hit">
+                <span className="hit-kind">{h.category === "Lookalike" ? "Imitation" : "Lure contract"}</span>
+                <a className="mono" href={`${MAINNET.explorer}/address/${h.target}`} target="_blank" rel="noreferrer">
+                  {h.target} ↗
+                </a>
+                <small>{h.reason} · {ago(h.at, now)}</small>
+              </article>
+            ))}
+          </div>
+        </div>
+        <div className="radar-name">
+          <b>Would this name fool people?</b>
+          <p className="muted small">Type an account name. The look-alike agent compares it with {MAINNET_PROTECTED.length} famous NEAR accounts, catching swapped letters and look-alike characters such as 0 for o.</p>
+          <input id="radar-name" aria-label="Account name to test" placeholder="ref-flnance.near" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" spellCheck={false} />
+          {q.length > 3 && (
+            <p className={`verdict-line ${fooled ? "bad" : "good"}`}>
+              {fooled ? (
+                <>
+                  Imitates <b className="mono">{fooled}</b>. t-helper would flag it the moment it's created.
+                </>
+              ) : MAINNET_PROTECTED.includes(q) || MAINNET_PROTECTED.includes(`${q}.near`) ? (
+                <>That's the real account.</>
+              ) : (
+                <>Doesn't imitate any of the famous accounts we protect.</>
+              )}
+            </p>
+          )}
+          <div className="examples left">
+            {["ref-flnance.near", "wrap0.near", "1ntents.near", "rnintbase1.near"].map((x) => (
+              <button key={x} type="button" onClick={() => setName(x)}>{x}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 

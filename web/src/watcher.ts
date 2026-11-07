@@ -25,6 +25,9 @@ export interface WatcherStats {
   findings: number;
   tipsSent: number;
   tipsVerified: number;
+  /** New accounts and contract deployments inspected (what the radar looks at). */
+  accounts: number;
+  deploys: number;
   error?: string;
 }
 
@@ -45,6 +48,8 @@ export interface WatcherOptions {
   knownBadCode: () => Map<string, number>;
   /** Read-only: never sends tips (used for the mainnet radar). */
   readOnly?: boolean;
+  /** Which detectors to run (default: all five). */
+  only?: string[];
   onBlock?: (txs: Tx[], stats: WatcherStats) => void;
   onFinding?: (f: Finding, tip?: TipResult) => void;
 }
@@ -106,7 +111,7 @@ export class BrowserWatcher {
   private seen = new Set<string>();
 
   constructor(private o: WatcherOptions) {
-    this.stats = { running: false, network: o.network, height: 0, lag: 0, blocks: 0, txs: 0, findings: 0, tipsSent: 0, tipsVerified: 0 };
+    this.stats = { running: false, network: o.network, height: 0, lag: 0, blocks: 0, txs: 0, findings: 0, tipsSent: 0, tipsVerified: 0, accounts: 0, deploys: 0 };
     this.chain = browserChain(o.rpcUrl);
     this.detectors = [
       lookalikeDetector(o.protectedNames, DEFAULT_THRESHOLDS),
@@ -114,7 +119,7 @@ export class BrowserWatcher {
       keyHijackDetector(DEFAULT_THRESHOLDS),
       maliciousContractDetector({ knownBad: o.knownBadCode }),
       rogueAgentDetector(DEFAULT_THRESHOLDS),
-    ];
+    ].filter((d) => !o.only || o.only.includes(d.name));
   }
 
   start() {
@@ -128,12 +133,21 @@ export class BrowserWatcher {
     this.stats.running = false;
   }
 
+  /**
+   * neardata answers a rate-limited request without CORS headers, so the browser
+   * only sees "Failed to fetch". Treat that like a 429: back off and retry.
+   */
   private async getJson(url: string): Promise<any> {
     for (let attempt = 0; ; attempt++) {
-      const res = await fetch(url);
-      if (res.ok) return res.json();
-      if (res.status !== 429 || attempt > 4) throw new Error(`neardata ${res.status}`);
-      await sleep(600 * 2 ** attempt);
+      let res: Response | null = null;
+      try {
+        res = await fetch(url);
+      } catch {
+        res = null; // network error or a CORS-less 429
+      }
+      if (res?.ok) return res.json();
+      if ((res && res.status !== 429) || attempt >= 5) throw new Error(res ? `neardata ${res.status}` : "network");
+      await sleep(Math.min(400 * 2 ** attempt, 4000));
     }
   }
 
@@ -156,7 +170,8 @@ export class BrowserWatcher {
           if (this.next === this.head) {
             await this.process(block.txs, block.height);
             this.next = this.head + 1;
-            await sleep(900);
+            // About one testnet block time: asking sooner usually returns the same block.
+            await sleep(1050);
           }
           continue;
         }
@@ -167,7 +182,7 @@ export class BrowserWatcher {
         this.stats.error = undefined;
       } catch (e: any) {
         this.stats.error = String(e?.message ?? e);
-        await sleep(2000);
+        await sleep(1500);
       }
     }
   }
@@ -182,6 +197,12 @@ export class BrowserWatcher {
   private async process(txs: Tx[], height: number) {
     this.stats.blocks++;
     this.stats.txs += txs.length;
+    for (const tx of txs) {
+      for (const a of tx.actions) {
+        if (a.kind === "CreateAccount" || (a.kind === "FunctionCall" && a.method === "create_account")) this.stats.accounts++;
+        if (a.kind === "DeployContract") this.stats.deploys++;
+      }
+    }
     this.stats.height = height;
     this.stats.lag = Math.max(0, this.head - height);
     this.o.onBlock?.(txs, this.stats);
