@@ -64,31 +64,6 @@ export function Avatar({ name, size = 36 }: { name: string; size?: number }) {
   );
 }
 
-function ThemeToggle() {
-  const [theme, setTheme] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem("leukonet-theme");
-    } catch {
-      return null;
-    }
-  });
-  useEffect(() => {
-    if (theme) document.documentElement.dataset.theme = theme;
-    else delete document.documentElement.dataset.theme;
-    try {
-      theme ? localStorage.setItem("leukonet-theme", theme) : localStorage.removeItem("leukonet-theme");
-    } catch {
-      /* storage blocked */
-    }
-  }, [theme]);
-  const next = theme === "dark" ? "light" : theme === "light" ? null : "dark";
-  return (
-    <button className="ghost-btn" type="button" onClick={() => setTheme(next)} aria-label={`Colour theme: ${theme ?? "auto"}. Switch.`}>
-      {theme === "dark" ? "Dark" : theme === "light" ? "Light" : "Auto"}
-    </button>
-  );
-}
-
 const MENU_LINKS = [
   { href: "#top", label: "Live map", hint: "Watch the swarm and release a scam" },
   { href: "#swarm", label: "The swarm", hint: "Meet the five agents" },
@@ -97,6 +72,15 @@ const MENU_LINKS = [
   { href: "#registry", label: "Registry", hint: "Every verdict, onchain" },
   { href: "#how", label: "How it works", hint: "Watch, flag, verify, protect" },
   { href: "#developers", label: "Developers", hint: "One call before every payment" },
+  { href: "#faq", label: "Questions", hint: "What people ask first" },
+];
+
+const NAV_LINKS = [
+  { href: "#swarm", label: "Swarm" },
+  { href: "#check", label: "Check" },
+  { href: "#radar", label: "Radar" },
+  { href: "#registry", label: "Registry" },
+  { href: "#faq", label: "FAQ" },
 ];
 
 /** Hamburger menu: the button opens a panel with every section, the theme switch and the source link. */
@@ -152,10 +136,6 @@ function Menu() {
             ))}
           </nav>
           <div className="menu-foot">
-            <span className="muted">Theme</span>
-            <ThemeToggle />
-          </div>
-          <div className="menu-foot">
             <a href="https://github.com/carynyx80/leukonet" target="_blank" rel="noreferrer">
               Source code ↗
             </a>
@@ -173,7 +153,7 @@ function Logo() {
       <g stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round">
         <path d="M16 4v4M16 24v4M4 16h4M24 16h4M7.5 7.5l2.8 2.8M21.7 21.7l2.8 2.8M7.5 24.5l2.8-2.8M21.7 10.3l2.8-2.8" />
       </g>
-      <circle cx="16" cy="16" r="2" fill="var(--chain)" />
+      <circle cx="16" cy="16" r="2" fill="var(--accent-2)" />
     </svg>
   );
 }
@@ -210,6 +190,19 @@ export function App() {
   }, [s.blocks]);
   const caught = s.reports.filter((r) => r.status === "Confirmed").length;
 
+  // Cards light up under the cursor.
+  useEffect(() => {
+    const on = (e: PointerEvent) => {
+      const el = (e.target as HTMLElement | null)?.closest?.(".agent, .radar-live, .radar-name, .faq-card, .steps li") as HTMLElement | null;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      el.style.setProperty("--mx", `${e.clientX - r.left}px`);
+      el.style.setProperty("--my", `${e.clientY - r.top}px`);
+    };
+    window.addEventListener("pointermove", on, { passive: true });
+    return () => window.removeEventListener("pointermove", on);
+  }, []);
+
   return (
     <>
       <nav className="nav">
@@ -219,16 +212,26 @@ export function App() {
             leuko<b>net</b>
           </span>
         </a>
+        <div className="nav-links">
+          {NAV_LINKS.map((l) => (
+            <a key={l.href} href={l.href}>{l.label}</a>
+          ))}
+        </div>
         <div className="nav-right">
           <span className={`live ${s.connected ? "" : "off"}`}>
             <i />
-            {s.connected ? "testnet live" : "reconnecting"}
+            {s.connected ? "live" : "offline"}
           </span>
+          <a className="btn-soft" href="#top">Release a scam ↗</a>
           <Menu />
         </div>
       </nav>
 
       <header className="hero" id="top">
+        <span className="corner tl" aria-hidden="true" />
+        <span className="corner tr" aria-hidden="true" />
+        <span className="corner bl" aria-hidden="true" />
+        <span className="corner br" aria-hidden="true" />
         <div className="hero-map">
           {meta && <ThreatMap sentinelAccounts={meta.sentinelAccounts} reports={s.reports} subscribe={subscribe} busy={busy} focusX={wide ? 0.66 : 0.5} />}
         </div>
@@ -250,14 +253,31 @@ export function App() {
           </div>
           <CellStatus stats={cell.stats} watchers={watchers} lastTip={cell.lastTip} now={now} />
         </div>
-        <p className="hero-hint">Each streak is a real testnet transaction flowing to the agent that inspects it. Hover a dot for details.</p>
+        <div className="hud" aria-label="Swarm status">
+          <span>Leukonet swarm · testnet</span>
+          <div>
+            <span>agents <b>5</b></span>
+            <span>watching <b>{Math.max(1, watchers)}</b></span>
+          </div>
+          <div>
+            <span>open <b>{s.reports.filter((r) => r.status === "Open").length}</b></span>
+            <span>caught <b>{caught}</b></span>
+          </div>
+        </div>
       </header>
+
+      <div className="announce">
+        <a className="pill" href="#radar">
+          <span className="new">New</span>
+          Mainnet radar: scan the real NEAR from your browser <i>→</i>
+        </a>
+      </div>
 
       <main className="page">
         <section className="section" id="swarm">
           <div className="section-h">
             <span className="eyebrow">The swarm</span>
-            <h2>Five agents. Five different instincts. One verdict.</h2>
+            <h2>Five instincts. <em>One verdict.</em></h2>
             <p>Each agent is its own NEAR account with its own bond. When one raises the alarm, the others check the evidence themselves and stake on their answer.</p>
           </div>
           <div className="agents">
@@ -285,17 +305,30 @@ export function App() {
         <section className="section how" id="how">
           <div className="section-h">
             <span className="eyebrow">How it works</span>
-            <h2>From robbery to "don't pay" in about fifteen seconds</h2>
+            <h2>Robbery to "don't pay" <em>in seconds.</em></h2>
           </div>
           <ol className="steps">
-            <li><Avatar name="neutrophil" size={34} /><b>Watch</b><p>The agents read every testnet block as it lands, about one a second.</p></li>
-            <li><Avatar name="macrophage" size={34} /><b>Flag and stake</b><p>The agent that spots a scam reports it and puts NEAR on the line.</p></li>
-            <li><Avatar name="b-cell" size={34} /><b>Check each other</b><p>The rest re-check the evidence with their own rules and stake on their vote. Wrong votes lose stake to right ones.</p></li>
-            <li><Avatar name="t-helper" size={34} /><b>Protect</b><p>Confirmed scams go into a public registry. Wallets and agents ask it before they pay.</p></li>
+            <li><b>Watch</b><p>The agents read every testnet block as it lands, about one a second.</p></li>
+            <li><b>Flag and stake</b><p>The agent that spots a scam reports it and puts NEAR on the line.</p></li>
+            <li><b>Check each other</b><p>The rest re-check the evidence with their own rules and stake on their vote. Wrong votes lose stake to right ones.</p></li>
+            <li><b>Protect</b><p>Confirmed scams go into a public registry. Wallets and agents ask it before they pay.</p></li>
           </ol>
         </section>
 
         <Developers registry={meta?.registry ?? "registry.leukonet-mw43jm6i.testnet"} />
+
+        <Questions />
+
+        <div className="cta">
+          <span className="eyebrow">Try it now</span>
+          <h2>
+            Release a scam.
+            <br />
+            <em>Watch it get caught.</em>
+          </h2>
+          <p>Everything runs on NEAR testnet with throwaway accounts. Nobody outside the demo is ever accused.</p>
+          <a className="btn" href="#top">Release a scam ↗</a>
+        </div>
 
         <footer className="footer">
           <span className="brand small">
@@ -370,9 +403,16 @@ function Story({
       <div className="story idle">
         <span className="eyebrow">An immune system for NEAR</span>
         <h1>
-          Five AI agents hunt scams on NEAR. <em>Release one and watch them catch it.</em>
+          Scams don't
+          <br />
+          <em>get paid.</em>
         </h1>
-        <p className="lede">They read every block live, stake money on what they find, check each other, and publish a list any wallet can ask before it pays.</p>
+        <p className="lede">Five AI agents read every block, catch scams live, stake NEAR on their verdicts and publish a list any wallet can check before it pays.</p>
+        <div className="chips" aria-label="What runs where">
+          <span>NEAR testnet</span>
+          <span style={{ ["--c" as any]: "var(--violet)" }}>5 staked agents</span>
+          <span style={{ ["--c" as any]: "var(--pending)" }}>your browser</span>
+        </div>
         {meta?.demoControls ? (
           <>
             <p className="pick">Release a scam on testnet</p>
@@ -670,8 +710,8 @@ function Radar() {
   return (
     <section className="section radar" id="radar">
       <div className="section-h">
-        <span className="eyebrow">Mainnet radar</span>
-        <h2>Point the agents at the real NEAR</h2>
+        <span className="eyebrow" style={{ color: "var(--violet)" }}>Mainnet radar</span>
+        <h2>Pointed at <em>the real NEAR.</em></h2>
         <p>
           The same detectors, scanning NEAR mainnet live from your browser, read-only. They look for new accounts named to imitate famous ones and for
           contracts built as airdrop lures. Anything found here is shown, never reported: no one is accused on chain.
@@ -759,7 +799,7 @@ function Checker({ reports, protectedNames }: { reports: any[]; protectedNames: 
     <section className="section check" id="check">
       <div className="section-h center">
         <span className="eyebrow">Check before you pay</span>
-        <h2>Is this account safe to pay?</h2>
+        <h2>Safe to <em>pay?</em></h2>
         <p>Type the account you're about to send money to. Never a seed phrase or key: only the public name.</p>
       </div>
       <form
@@ -841,7 +881,7 @@ function Registry({
     <section className="section" id="registry">
       <div className="section-h">
         <span className="eyebrow">The registry</span>
-        <h2>Every verdict, onchain</h2>
+        <h2>Every verdict, <em>onchain.</em></h2>
         <p>A report needs at least 3 votes and 66% of the staked NEAR to be confirmed. Click a row for the evidence.</p>
       </div>
       <div className="ledger">
@@ -948,7 +988,7 @@ if (!check.safe) throw new Error("Leukonet: do not pay, " + check.categories.joi
     <section className="section dev" id="developers">
       <div className="section-h">
         <span className="eyebrow">For developers</span>
-        <h2>One free call before every payment</h2>
+        <h2>One call <em>before every payment.</em></h2>
         <p>
           No key, no wallet, no fee: <span className="mono">is_safe</span> is a read-only view on the registry contract. Use it from any language, or wrap
           payments with the guard in <span className="mono">src/sdk/guard.ts</span>.
@@ -961,6 +1001,49 @@ if (!check.safe) throw new Error("Leukonet: do not pay, " + check.categories.joi
         <pre>
           <code>{code}</code>
         </pre>
+      </div>
+    </section>
+  );
+}
+
+// ================================================================================
+
+const FAQ: { tag: string; q: string; a: string }[] = [
+  { tag: "Basics", q: "What is Leukonet?", a: "Five AI agents that watch NEAR block by block, catch scams as they happen, and stake NEAR on their verdicts in a public registry. Anyone can ask the registry if an account is safe before paying it." },
+  { tag: "Trust", q: "Why believe an agent?", a: "You don't have to. A report only stands once at least three agents re-check the evidence on chain with their own rules and 66% of the staked NEAR agrees. Agents on the wrong side lose stake." },
+  { tag: "Safety", q: "Can it accuse my account?", a: "Not on testnet: the swarm only reports accounts its own demo created. Everything else it sees is shown as observed and never written on chain. The mainnet radar is read-only." },
+  { tag: "Your browser", q: "What is my browser doing?", a: "Reading NEAR blocks over your own connection and running the same detectors as the agents. If it spots a scam it sends a tip, which an agent verifies on chain before acting." },
+  { tag: "Developers", q: "How do I use it?", a: "Call is_safe on the registry contract before any payment. It's a free view call: no key, no wallet, no fee. A guard wrapper for agents ships in the repo." },
+  { tag: "Scope", q: "Is it on mainnet?", a: "The registry and agents run on testnet for the hackathon. The radar already scans mainnet live, read-only. Moving the registry to mainnet is a deploy, not a rewrite." },
+];
+
+function Questions() {
+  return (
+    <section className="section" id="faq">
+      <div className="faq">
+        <div className="faq-head">
+          <span className="num">
+            07<small>Questions</small>
+          </span>
+          <h2>
+            Short
+            <br />
+            <em>answers.</em>
+          </h2>
+          <p>What people ask before they trust a swarm of agents with their money.</p>
+          <a className="btn-soft" href="https://github.com/carynyx80/leukonet" target="_blank" rel="noreferrer" style={{ justifySelf: "start" }}>
+            Read the code ↗
+          </a>
+        </div>
+        <div className="faq-grid">
+          {FAQ.map((f) => (
+            <article key={f.q} className="faq-card">
+              <span>{f.tag}</span>
+              <b>{f.q}</b>
+              <p>{f.a}</p>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );

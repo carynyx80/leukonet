@@ -276,7 +276,7 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy, focusX =
           ctx.font = `600 ${narrow ? 11 : 12}px 'JetBrains Mono', monospace`;
           ctx.fillStyle = colors.ink;
           ctx.fillText(short(r.target, narrow ? 16 : 28), lx, y - 2);
-          ctx.font = `${narrow ? 10 : 11}px 'Instrument Sans', sans-serif`;
+          ctx.font = `${narrow ? 10 : 11}px 'Inter', sans-serif`;
           ctx.fillStyle = color;
           ctx.fillText(open ? `${r.category} · voting` : `${r.category} · ${r.status.toLowerCase()}`, lx, y + 12);
         }
@@ -329,7 +329,7 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy, focusX =
       ctx.lineWidth = 1;
       ctx.fillStyle = colors.chain;
       ctx.textAlign = "center";
-      ctx.font = `800 ${narrow ? 20 : 26}px 'Big Shoulders Display', 'JetBrains Mono', monospace`;
+      ctx.font = `700 ${narrow ? 20 : 26}px 'Inter', sans-serif`;
       ctx.fillText(String(reportsRef.current.filter((r) => r.status === "Confirmed").length), cx, cy + 5);
       ctx.font = `${narrow ? 7.5 : 8.5}px 'JetBrains Mono', monospace`;
       ctx.fillText("CAUGHT", cx, cy + (narrow ? 14 : 17));
@@ -360,7 +360,7 @@ export function ThreatMap({ sentinelAccounts, reports, subscribe, busy, focusX =
         if (img?.complete) ctx.drawImage(img, x - size / 2, y - size / 2, size, size);
         ctx.textAlign = "center";
         ctx.fillStyle = colors.ink;
-        ctx.font = `800 ${narrow ? 13 : 16}px 'Big Shoulders Display', 'Instrument Sans', sans-serif`;
+        ctx.font = `600 ${narrow ? 12 : 14}px 'Inter', sans-serif`;
         ctx.fillText(a.name, x, y + size / 2 + 16);
         if (mood) {
           ctx.fillStyle = c;
