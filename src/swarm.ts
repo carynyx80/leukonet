@@ -289,9 +289,13 @@ export class Swarm {
           }
           if (r.status !== "Open") continue;
           for (const s of this.sentinels) void s.consider(r);
-          // Wait for every registered sentinel, including independent operators, or the window.
-          const registered: string[] = (this.hub.state.sentinels ?? []).map((x: any) => x.account_id);
-          const everyone = registered.length ? registered : this.sentinels.map((s) => s.id);
+          // Wait for our own sentinels and every independent operator that is active (voted on
+          // one of the last few closed reports), or for the window to end. An operator that goes
+          // offline stops being waited for after it misses a few reports.
+          const closed = (reports as any[]).filter((x) => x.status !== "Open").slice(0, 4);
+          const active = new Set<string>([...this.sentinels.map((s) => s.id), ...closed.flatMap((x) => x.votes.map((v: any) => v.sentinel))]);
+          const registered = new Set<string>((this.hub.state.sentinels ?? []).map((x: any) => x.account_id));
+          const everyone = [...active].filter((id) => !registered.size || registered.has(id));
           const allVoted = everyone.every((id) => r.votes.some((v: any) => v.sentinel === id));
           const expired = nowNs >= BigInt(r.deadline_ns);
           if ((allVoted || expired) && !this.finalizing.has(r.id)) {

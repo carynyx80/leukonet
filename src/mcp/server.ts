@@ -152,10 +152,8 @@ export function createLeukonetMcp(opts: LeukonetMcpOptions = {}) {
       annotations: { title: "Recent scam reports", ...readOnly },
     },
     async ({ status, limit }) => {
-      const stats = await viewCall(rpcUrl, registry, "get_stats");
-      const total = Number(stats.reports);
-      const from = Math.max(0, total - 60);
-      const all: any[] = await viewCall(rpcUrl, registry, "get_reports", { from_index: from, limit: 60 });
+      // get_reports pages newest-first: from_index 0 is the latest report.
+      const all: any[] = await viewCall(rpcUrl, registry, "get_reports", { from_index: 0, limit: 50 });
       const list = all
         .filter((r) => !status || r.status === status)
         .sort((a, b) => b.id - a.id)

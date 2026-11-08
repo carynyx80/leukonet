@@ -124,6 +124,45 @@ await guarded("someone.testnet", opts, () => pay("someone.testnet", amount)); //
 
 `guarded` wraps any payment function. Options: `blockPending: true` also refuses while a report is still being voted on, and `maxRisk` sets the risk threshold.
 
+### From any AI agent: MCP
+
+Leukonet is an MCP server. Hosted (no install): `https://swarm-production-38a8.up.railway.app/mcp` (streamable HTTP). Local: `npm run mcp` (stdio).
+
+```json
+{ "mcpServers": { "leukonet": { "command": "npx", "args": ["tsx", "/path/to/leukonet/src/mcp/stdio.ts"] } } }
+```
+
+| Tool | What it answers |
+|---|---|
+| `check_payment(to, amount_near?, strict?)` | **ALLOW** or **BLOCK**, with the reason. The one to call before every payment. |
+| `check_account(account_id)` | Verdict, risk, categories, open reports. |
+| `check_name(name)` | Does this name imitate one of 28 famous mainnet accounts? (offline) |
+| `recent_reports(status?, limit?)`, `get_report(report_id)` | The registry's reports, evidence and every vote. |
+| `swarm_status()` | Sentinels, bonds, track records, totals. |
+
+All tools are read-only views on the registry contract: no wallet, no key, no fee.
+
+### From your browser: Leukonet Guard
+
+A Chrome extension (`extension/`, or download `leukonet-guard.zip` from the live site's developer section; unzip and *Load unpacked* in `chrome://extensions`):
+
+- check any account from the toolbar popup;
+- right-click selected text, *Check with Leukonet*;
+- on NearBlocks, MyNearWallet, Meteor and a few others, confirmed scam accounts are marked **SCAM** and names imitating famous accounts **IMPOSTOR**, as the page loads. On any other page, *Scan this page* in the popup does the same once.
+
+It never changes forms or links and sends nothing anywhere except `is_safe` view calls to the RPC. Build: `npm run build:extension`.
+
+## Run your own sentinel
+
+The swarm is not meant to be five agents run by one person. Anyone can join with their own account and their own rules:
+
+```bash
+OPERATOR_ACCOUNT_ID=you.testnet OPERATOR_PRIVATE_KEY=ed25519:... npm run sentinel
+# optional: OPERATOR_PROFILE=neutrophil|macrophage|nk-cell|t-helper|b-cell (default b-cell, the strictest)
+```
+
+It locks the registry's minimum bond, then for every open report re-reads the evidence **from the chain** with its own thresholds and votes with stake. It trusts nothing the hosted swarm says. The hosted swarm waits for every registered sentinel (or the 20 s window) before closing a report, so independent votes always count. Right votes earn a share of the losing side's stake; wrong ones lose theirs.
+
 ## Contract interface
 
 | Method | Kind | What it does |
@@ -165,6 +204,9 @@ src/sentinel.ts      sentinel personas, filing and voting
 src/swarm.ts         orchestration, registry polling, immune memory
 src/sim/             attack simulator and normal background traffic
 src/sdk/guard.ts     checkBeforePay / guarded
+src/mcp/             MCP server (stdio + hosted /mcp)
+src/operator/        run-your-own-sentinel
+extension/           Leukonet Guard Chrome extension
 src/main.ts          server: swarm + SSE + static dashboard
 web/                 React dashboard
 examples/            guarded payment agent
@@ -178,7 +220,10 @@ test/                detector tests
 - **The detectors are heuristics.** They're tuned to the attack patterns they target. Staking and independent re-checking exist so that the swarm can disagree and a single bad call costs its maker. The contract owner can clear a proven false positive.
 - **NEAR AI is optional.** Without `NEAR_AI_API_KEY`, report summaries use each detector's own one-line reason.
 - **Mainnet watch mode** (`WATCH_MAINNET=1`) scans mainnet read-only against well-known names and never writes.
+- **Funds watchdog.** Every report and vote stakes testnet NEAR. The server checks balances every minute, tops up agents that run low from the master account, and pauses simulations (with a notice on the site) before the master is too low to finish one.
+- **Restarts lose nothing.** Helper and attack accounts use keys derived from the master key, and the cleanup queue lives on a persistent volume, so a redeploy never strands NEAR in throwaway accounts.
+- **Mainnet.** Every default (RPC, data feed, explorer) follows `NEAR_NETWORK=mainnet`; simulations and background traffic are off there by default, and `npm run setup` refuses to spend real NEAR without `--i-understand-this-spends-real-near` and your own funded account.
 
 ## Hackathon disclosure
 
-All code in this repository was written during the NEAR HACKATHON window, starting from an empty repository, with AI assistance (Claude Code). Libraries used: `near-sdk`, `near-api-js`, `react`, `vite`, `dotenv`, `tsx`. Data comes from FastNear (neardata, RPC). It is not derived from any earlier project.
+All code in this repository was written during the NEAR HACKATHON window, starting from an empty repository, with AI assistance (Claude Code). Libraries used: `near-sdk`, `near-api-js`, `@modelcontextprotocol/sdk`, `zod`, `react`, `vite`, `esbuild`, `dotenv`, `tsx`. Data comes from FastNear (neardata, RPC). It is not derived from any earlier project.

@@ -87,9 +87,8 @@ console.log(`Watching ${registry} with ${profile.name}'s thresholds. Ctrl+C to s
 const seen = new Set<number>();
 async function tick() {
   try {
-    const stats = await view(registry, "get_stats");
-    const from = Math.max(0, Number(stats.reports) - 30);
-    const reports: any[] = await view(registry, "get_reports", { from_index: from, limit: 30 });
+    // Newest first: from_index 0 is the latest report.
+    const reports: any[] = await view(registry, "get_reports", { from_index: 0, limit: 30 });
     for (const r of reports) {
       if (r.status === "Confirmed" && r.category === "MaliciousContract" && !seen.has(r.id)) {
         try {
