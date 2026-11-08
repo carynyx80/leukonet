@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Leukonet Guard",
+  "version": "0.2.0",
+  "description": "Checks NEAR accounts against the Leukonet scam registry before you pay, and marks scam and impostor accounts on wallet and explorer pages.",
+  "action": { "default_popup": "popup.html", "default_title": "Leukonet Guard" },
+  "icons": { "128": "icon.png" },
+  "background": { "service_worker": "background.js", "type": "module" },
+  "permissions": ["storage", "contextMenus", "notifications", "activeTab", "scripting"],
+  "host_permissions": ["https://rpc.testnet.fastnear.com/*", "https://rpc.mainnet.fastnear.com/*"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://nearblocks.io/*",
+        "https://testnet.nearblocks.io/*",
+        "https://app.mynearwallet.com/*",
+        "https://testnet.mynearwallet.com/*",
+        "https://wallet.meteorwallet.app/*",
+        "https://pikespeak.ai/*",
+        "https://near.social/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

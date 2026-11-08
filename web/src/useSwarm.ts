@@ -18,6 +18,7 @@ export interface Meta {
   watchers?: { count: number; tips: number; verified: number };
   dataUrl?: string;
   rpcUrl?: string;
+  funds?: { master: string | null; sentinels: Record<string, string>; low: boolean; checkedAt: number };
 }
 
 export type Ev = { type: string; [k: string]: any };

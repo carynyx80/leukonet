@@ -45,7 +45,13 @@ function writeEnv(values: Record<string, string>) {
 }
 
 async function main() {
-  if (config.network !== "testnet") throw new Error("Setup only runs on testnet.");
+  if (config.network === "mainnet") {
+    // Real money: no faucet, and nothing happens without an explicit flag.
+    if (!process.argv.includes("--i-understand-this-spends-real-near")) {
+      throw new Error("Mainnet setup spends real NEAR (contract storage, sentinel bonds). Re-run with --i-understand-this-spends-real-near.");
+    }
+    if (!hasKey("master")) throw new Error("Mainnet needs your own funded account in .keys/master.json ({ accountId, privateKey }).");
+  }
 
   step("Master account");
   const masterId = hasKey("master") ? loadKey("master").accountId : await faucetAccount();
@@ -90,8 +96,10 @@ async function main() {
     console.log(`  ${p.name.padEnd(11)} ${id}  — ${p.role}`);
   }
 
-  step("Protected name for the look-alike demo");
-  console.log(`  ${await ensureProtectedName()}`);
+  if (config.network !== "mainnet") {
+    step("Protected name for the look-alike demo");
+    console.log(`  ${await ensureProtectedName()}`);
+  }
 
   console.log(`\n✓ Ready. Master balance: ${fmtNear((await balanceOf(masterId)) ?? 0n)} NEAR`);
   console.log("  Next: npm start   (then open http://localhost:8787)");

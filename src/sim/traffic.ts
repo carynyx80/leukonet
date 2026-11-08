@@ -3,35 +3,42 @@
  * It keeps the threat map alive and gives the rogue-agent detector a baseline
  * of honest behaviour that must NOT be flagged.
  */
-import { hasKey, loadKey, saveKey } from "../config.js";
-import { accountFor, accountFromKey, actions, balanceOf, near, newKeyPair, serial, transfer } from "../near.js";
+import { accountFor, accountFromKey, actions, balanceOf, derivedKeyPair, hasAccessKey, near, serial, transfer } from "../near.js";
 import { addDemoAccounts } from "../swarm.js";
 import type { Hub } from "../hub.js";
 
+/**
+ * Finds or creates a helper account whose key is derived from the master key,
+ * so a restart on a fresh host reuses it instead of failing on "already exists".
+ * A name taken by an account we can't sign for is skipped (label-2, label-3...).
+ */
 async function ensure(label: string, amount: bigint) {
-  const name = `sim-${label}`;
-  if (hasKey(name)) {
-    const k = loadKey(name);
-    if ((await balanceOf(k.accountId)) !== null) return accountFromKey(k.accountId, k.privateKey);
-  }
   const master = accountFor("master");
-  const id = `${label}.${master.accountId}`;
-  const kp = newKeyPair();
-  await serial(master.accountId, () =>
-    master.signAndSendTransaction({
-      receiverId: id,
-      actions: [actions.createAccount(), actions.transfer(amount), actions.addFullAccessKey(kp.getPublicKey())],
-      waitUntil: "EXECUTED_OPTIMISTIC",
-    } as any),
-  );
-  saveKey(name, { accountId: id, privateKey: kp.toString() });
-  addDemoAccounts(id);
-  return accountFromKey(id, kp.toString());
+  for (let n = 1; n <= 6; n++) {
+    const name = n === 1 ? label : `${label}-${n}`;
+    const id = `${name}.${master.accountId}`;
+    const kp = derivedKeyPair(name);
+    const pub = kp.getPublicKey().toString();
+    const ours = await hasAccessKey(id, pub);
+    if (ours === false) continue;
+    if (ours === null) {
+      await serial(master.accountId, () =>
+        master.signAndSendTransaction({
+          receiverId: id,
+          actions: [actions.createAccount(), actions.transfer(amount), actions.addFullAccessKey(kp.getPublicKey())],
+          waitUntil: "EXECUTED_OPTIMISTIC",
+        } as any),
+      );
+    }
+    addDemoAccounts(id);
+    return accountFromKey(id, kp.toString());
+  }
+  throw new Error(`no free name for ${label}`);
 }
 
 export async function startNormalTraffic(hub: Hub, everyMs = 20_000) {
   try {
-    const agent = await ensure("steady-agent", near(0.3));
+    const agent = await ensure("payroll-agent", near(0.3));
     const shops = [await ensure("supplier-a", near(0.01)), await ensure("supplier-b", near(0.01))];
     hub.log(`normal traffic: ${agent.accountId} pays suppliers every ${everyMs / 1000}s`);
     let i = 0;

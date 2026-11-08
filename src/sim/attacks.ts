@@ -5,8 +5,8 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { ROOT, config, saveKey, loadKey, hasKey } from "../config.js";
-import { Account, accountFor, accountFromKey, actions, balanceOf, call, near, newKeyPair, rpc, TGAS, transfer, view, serial, landed } from "../near.js";
+import { ROOT, config, saveKey, loadKey } from "../config.js";
+import { Account, accountFor, accountFromKey, actions, balanceOf, call, derivedKeyPair, near, newKeyPair, rpc, TGAS, transfer, view, serial, landed } from "../near.js";
 import { addDemoAccounts, readDemoState, writeDemoState } from "../swarm.js";
 import type { Hub } from "../hub.js";
 import { checkBeforePay, shouldBlock } from "../sdk/guard.js";
@@ -25,8 +25,27 @@ export const ATTACKS: { kind: AttackKind; label: string; story: string }[] = [
 const rand = () => Math.random().toString(36).slice(2, 7);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Sub-accounts created by an attack, deleted afterwards so funds return to the master. */
-const cleanup: { id: string; at: number }[] = [];
+/**
+ * Sub-accounts created by an attack, deleted a few minutes later so their NEAR
+ * returns to the master. Kept on disk with each account's key label (keys are
+ * derived from the master key), so a restart never strands funds.
+ */
+const CLEANUP_FILE = path.join(ROOT, "data", "cleanup.json");
+type Pending = { accountId: string; label: string; at: number };
+function readCleanup(): Pending[] {
+  try {
+    return JSON.parse(fs.readFileSync(CLEANUP_FILE, "utf8"));
+  } catch {
+    return [];
+  }
+}
+function writeCleanup(list: Pending[]) {
+  fs.mkdirSync(path.dirname(CLEANUP_FILE), { recursive: true });
+  fs.writeFileSync(CLEANUP_FILE, JSON.stringify(list, null, 1));
+}
+function scheduleCleanup(accountId: string, label: string) {
+  writeCleanup([...readCleanup(), { accountId, label, at: Date.now() + 3 * 60_000 }]);
+}
 
 class Run {
   constructor(
@@ -43,7 +62,7 @@ class Run {
 async function subAccount(label: string, amount: bigint, keep = false): Promise<Account> {
   const master = accountFor("master");
   const id = `${label}.${master.accountId}`;
-  const kp = newKeyPair();
+  const kp = derivedKeyPair(`sim-${label}`);
   await serial(master.accountId, () =>
     master.signAndSendTransaction({
       receiverId: id,
@@ -51,10 +70,9 @@ async function subAccount(label: string, amount: bigint, keep = false): Promise<
       waitUntil: "EXECUTED_OPTIMISTIC",
     } as any),
   );
-  saveKey(`sim-${label}`, { accountId: id, privateKey: kp.toString() });
   addDemoAccounts(id);
+  if (!keep) scheduleCleanup(id, `sim-${label}`);
   await waitForKey(id, kp.getPublicKey().toString());
-  if (!keep) cleanup.push({ id: `sim-${label}`, at: Date.now() + 3 * 60_000 });
   return accountFromKey(id, kp.toString());
 }
 
@@ -198,7 +216,8 @@ async function lookalike(run: Run) {
   for (let attempt = 0; attempt < 6; attempt++) {
     const fake = mutate(protectedName);
     if ((await balanceOf(fake)) !== null) continue;
-    const kp = newKeyPair();
+    const label = `sim-look-${fake.split(".")[0]}`;
+    const kp = derivedKeyPair(label);
     const parent = fake.split(".").slice(1).join(".");
     const res = await call(
       master,
@@ -208,10 +227,8 @@ async function lookalike(run: Run) {
       near(0.01),
       30n * TGAS,
     );
-    const label = `look-${fake.split(".")[0]}`;
-    saveKey(`sim-${label}`, { accountId: fake, privateKey: kp.toString() });
     addDemoAccounts(fake);
-    cleanup.push({ id: `sim-${label}`, at: Date.now() + 3 * 60_000 });
+    scheduleCleanup(fake, label);
     run.stage("attack", `Registered ${fake}, imitating ${protectedName}`, res.hash);
     return fake;
   }
@@ -248,19 +265,21 @@ export async function runAttack(kind: AttackKind, hub?: Hub, memory?: { knownBad
 /** Deletes finished attack accounts, returning their NEAR to the master. */
 export async function recycle(force = false) {
   const master = config.master || loadKey("master").accountId;
-  const due = cleanup.filter((c) => force || c.at <= Date.now());
+  const list = readCleanup();
+  const due = list.filter((c) => force || c.at <= Date.now());
+  if (!due.length) return 0;
+  const keep: Pending[] = list.filter((c) => !due.includes(c));
   for (const c of due) {
-    cleanup.splice(cleanup.indexOf(c), 1);
-    if (!hasKey(c.id)) continue;
-    const key = loadKey(c.id);
     try {
-      const acc = accountFromKey(key.accountId, key.privateKey);
-      await serial(key.accountId, () => acc.deleteAccount(master));
-      fs.rmSync(path.join(ROOT, ".keys", `${c.id}.json`), { force: true });
-    } catch {
-      /* already gone, or balance locked: leave it */
+      const acc = accountFromKey(c.accountId, derivedKeyPair(c.label).toString());
+      await serial(c.accountId, () => acc.deleteAccount(master));
+    } catch (e: any) {
+      // Gone already, or a key we can't sign with: drop it. Otherwise (rate limit, network) retry later.
+      const msg = String(e?.message ?? e);
+      if (!/does not exist|AccessKeyDoesNotExist|doesn't exist|InvalidAccessKey/i.test(msg)) keep.push({ ...c, at: Date.now() + 60_000 });
     }
   }
+  writeCleanup(keep);
   return due.length;
 }
 

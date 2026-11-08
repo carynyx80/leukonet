@@ -6,7 +6,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT, config, hasKey, requireDeployed } from "./config.js";
-import { accountFor } from "./near.js";
+import { accountFor, balanceOf, fmtNear, near, transfer } from "./near.js";
 import { Hub } from "./hub.js";
 import { Swarm, readDemoState } from "./swarm.js";
 import { PERSONAS, Sentinel } from "./sentinel.js";
@@ -14,12 +14,14 @@ import { chainView } from "./chain.js";
 import { ATTACKS, runAttack, recycle, type AttackKind } from "./sim/attacks.js";
 import { startNormalTraffic } from "./sim/traffic.js";
 import { checkBeforePay } from "./sdk/guard.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createLeukonetMcp } from "./mcp/server.js";
 
 requireDeployed();
 const hub = new Hub();
 const chain = chainView();
 
-const swarm = new Swarm(hub, { network: "testnet", readOnly: false, rpcUrl: config.rpcUrl, dataUrl: config.dataUrl });
+const swarm = new Swarm(hub, { network: config.network, readOnly: false, rpcUrl: config.rpcUrl, dataUrl: config.dataUrl });
 for (const p of PERSONAS) {
   if (!hasKey(`sentinel-${p.name}`)) {
     hub.log(`sentinel ${p.name} has no key; run "npm run setup"`, "warn");
@@ -40,6 +42,35 @@ if (process.env.WATCH_MAINNET === "1") {
 }
 
 if (config.normalTraffic) startNormalTraffic(hub);
+
+// ----- funds watchdog -----------------------------------------------------------
+// Every report and vote stakes testnet NEAR. Agents running low are refilled from
+// the master account; simulations pause before the master gets too low to finish one.
+const FUNDS = { attackFloor: near(0.6), sentinelLow: near(0.12), refill: near(0.3), masterReserve: near(1) };
+const funds: { master: string | null; sentinels: Record<string, string>; low: boolean; checkedAt: number } = { master: null, sentinels: {}, low: false, checkedAt: 0 };
+async function checkFunds() {
+  const master = await balanceOf(config.master);
+  if (master === null) return;
+  funds.master = master.toString();
+  funds.low = master < FUNDS.attackFloor;
+  for (const s of swarm.sentinels) {
+    const bal = await balanceOf(s.id);
+    if (bal === null) continue;
+    funds.sentinels[s.persona.name] = bal.toString();
+    if (bal < FUNDS.sentinelLow && master > FUNDS.masterReserve) {
+      try {
+        await transfer(accountFor("master"), s.id, FUNDS.refill);
+        hub.log(`funds: topped ${s.persona.name} up with ${fmtNear(FUNDS.refill, 2)} NEAR`);
+      } catch (e: any) {
+        hub.log(`funds: could not top up ${s.persona.name}: ${e.message}`, "warn");
+      }
+    }
+  }
+  funds.checkedAt = Date.now();
+  if (funds.low) hub.log(`funds: master has ${fmtNear(master, 2)} NEAR; simulations are paused until it is refilled`, "warn");
+}
+void checkFunds();
+setInterval(() => void checkFunds().catch(() => undefined), 60_000);
 setInterval(() => void recycle().catch(() => undefined), 60_000);
 
 // ----- HTTP ------------------------------------------------------------------
@@ -112,8 +143,9 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Accept, Authorization, Mcp-Session-Id, Mcp-Protocol-Version, Last-Event-ID",
+      "Access-Control-Expose-Headers": "Mcp-Session-Id",
     });
     return res.end();
   }
@@ -163,8 +195,32 @@ const server = http.createServer(async (req, res) => {
           watchers: { count: watchers, tips: tipsReceived, verified: tipsVerified },
           dataUrl: config.dataUrl,
           rpcUrl: config.rpcUrl,
+          funds,
         },
       });
+    }
+    // MCP for AI agents: stateless streamable HTTP, a fresh server per request.
+    if (url.pathname === "/mcp") {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      if (req.method !== "POST") {
+        res.writeHead(405, { "Content-Type": "application/json", Allow: "POST" });
+        return res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message: "Use POST (stateless MCP server)." }, id: null }));
+      }
+      let body: unknown;
+      try {
+        body = JSON.parse(await readBody(req, 64_000));
+      } catch {
+        return json(res, 400, { jsonrpc: "2.0", error: { code: -32700, message: "Parse error" }, id: null });
+      }
+      const mcp = createLeukonetMcp({ registry: config.registry, rpcUrl: config.rpcUrl, explorer: config.explorer });
+      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+      res.on("close", () => {
+        void transport.close();
+        void mcp.close();
+      });
+      await mcp.connect(transport);
+      await transport.handleRequest(req, res, body);
+      return;
     }
     const check = url.pathname.match(/^\/api\/check\/([a-z0-9._-]+)$/);
     if (check) {
@@ -195,6 +251,9 @@ const server = http.createServer(async (req, res) => {
       if (!config.demoControls) return json(res, 403, { error: "Demo controls are off on this server." });
       const kind = attack[1] as AttackKind;
       if (!ATTACKS.some((a) => a.kind === kind)) return json(res, 404, { error: "Unknown attack" });
+      if (funds.low) {
+        return json(res, 503, { error: "The demo wallet is out of testnet NEAR, so new simulations are paused. Everything else still works." });
+      }
       if (attackRunning) return json(res, 409, { error: `An attack is already running (${attackRunning}). Try again when it finishes.` });
       attackRunning = kind;
       void runAttack(kind, hub, swarm.memory).finally(() => {

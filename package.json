@@ -9,11 +9,13 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@types/node": "^26.6.6",
     "dotenv": "^18.0.9",
     "near-api-js": "^7.4.0",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "zod": "^4.6.7"
   },
   "scripts": {
     "setup": "tsx src/scripts/setup.ts",
@@ -26,9 +28,13 @@
     "typecheck": "tsc --noEmit",
     "dev:web": "vite web",
     "build:web": "vite build web",
-    "export-env": "tsx src/scripts/export-env.ts"
+    "export-env": "tsx src/scripts/export-env.ts",
+    "mcp": "tsx src/mcp/stdio.ts",
+    "sentinel": "tsx src/operator/run.ts",
+    "build:extension": "node extension/build.mjs && python3 -c \"import shutil; shutil.make_archive('web/public/leukonet-guard', 'zip', 'extension/dist')\""
   },
   "devDependencies": {
+    "@types/chrome": "^0.3.7",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^4.7.0",

@@ -289,7 +289,10 @@ export class Swarm {
           }
           if (r.status !== "Open") continue;
           for (const s of this.sentinels) void s.consider(r);
-          const allVoted = this.sentinels.every((s) => r.votes.some((v: any) => v.sentinel === s.id));
+          // Wait for every registered sentinel, including independent operators, or the window.
+          const registered: string[] = (this.hub.state.sentinels ?? []).map((x: any) => x.account_id);
+          const everyone = registered.length ? registered : this.sentinels.map((s) => s.id);
+          const allVoted = everyone.every((id) => r.votes.some((v: any) => v.sentinel === id));
           const expired = nowNs >= BigInt(r.deadline_ns);
           if ((allVoted || expired) && !this.finalizing.has(r.id)) {
             const coordinator = this.sentinels.find((s) => s.persona.coordinator) ?? this.sentinels[0];

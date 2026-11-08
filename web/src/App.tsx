@@ -416,6 +416,11 @@ function Story({
         {meta?.demoControls ? (
           <>
             <p className="pick">Release a scam on testnet</p>
+            {meta.funds?.low && (
+              <p className="lagging" role="status">
+                The demo wallet is out of testnet NEAR, so new simulations are paused. The live map, checker, radar and registry still work.
+              </p>
+            )}
             {behind && (
               <p className="lagging" role="status">
                 The swarm is catching up with the chain ({lag} blocks behind). Simulations unlock when it's back in sync, usually within a minute.
@@ -423,7 +428,7 @@ function Story({
             )}
             <div className="scams">
               {meta.attacks.map((a) => (
-                <button key={a.kind} type="button" className="scam" disabled={running || behind} onClick={() => void launch(a.kind)} style={{ ["--hue" as any]: `var(--${agentByName(CATCHER[a.kind])?.hue})` }}>
+                <button key={a.kind} type="button" className="scam" disabled={running || behind || !!meta.funds?.low} onClick={() => void launch(a.kind)} style={{ ["--hue" as any]: `var(--${agentByName(CATCHER[a.kind])?.hue})` }}>
                   <Avatar name={CATCHER[a.kind]} size={30} />
                   <span>
                     <b>{a.label}</b>
@@ -993,6 +998,26 @@ if (!check.safe) throw new Error("Leukonet: do not pay, " + check.categories.joi
           No key, no wallet, no fee: <span className="mono">is_safe</span> is a read-only view on the registry contract. Use it from any language, or wrap
           payments with the guard in <span className="mono">src/sdk/guard.ts</span>.
         </p>
+      </div>
+      <div className="tools">
+        <article className="tool">
+          <span className="eyebrow">For AI agents</span>
+          <b>Leukonet MCP server</b>
+          <p>Six read-only tools, including check_payment (ALLOW or BLOCK) and check_name. Add it to Claude, Cursor or any MCP client.</p>
+          <code className="mono">{`${API || location.origin}/mcp`}</code>
+        </article>
+        <article className="tool">
+          <span className="eyebrow" style={{ color: "var(--pending)" }}>For people</span>
+          <b>Leukonet Guard extension</b>
+          <p>Check any account from your toolbar, right-click a name to check it, and see scam and impostor accounts marked on wallet and explorer pages.</p>
+          <a className="btn-soft" href="/leukonet-guard.zip" download>Download for Chrome ↓</a>
+        </article>
+        <article className="tool">
+          <span className="eyebrow" style={{ color: "var(--violet)" }}>For operators</span>
+          <b>Run your own sentinel</b>
+          <p>Bond your own testnet account and vote on every report with your own rules. Right votes earn stake; wrong votes lose it.</p>
+          <code className="mono">OPERATOR_ACCOUNT_ID=you.testnet OPERATOR_PRIVATE_KEY=… npm run sentinel</code>
+        </article>
       </div>
       <div className="code">
         <button type="button" className="ghost-btn copy" onClick={() => void copy()}>

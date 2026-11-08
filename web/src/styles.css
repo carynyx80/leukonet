@@ -430,6 +430,13 @@ button { font: inherit; color: inherit; }
 @media (max-width: 480px) { .steps { grid-template-columns: 1fr; } }
 
 /* developers */
+.tools { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+@media (max-width: 900px) { .tools { grid-template-columns: 1fr; } }
+.tool { position: relative; display: grid; gap: 10px; align-content: start; padding: 22px; border: 1px solid var(--line-2); border-radius: 22px; background: linear-gradient(180deg, #141714, #0f110f); min-width: 0; }
+.tool b { font-weight: 600; font-size: 19px; letter-spacing: -.02em; }
+.tool p { margin: 0; color: var(--muted); font-size: 14.5px; }
+.tool code { display: block; padding: 10px 12px; border-radius: 10px; background: rgba(0, 0, 0, .35); border: 1px solid var(--line-2); font-size: 12px; color: var(--accent); overflow-wrap: anywhere; }
+.tool .btn-soft { justify-self: start; }
 .code { overflow: hidden; background: #080908; }
 .code pre { margin: 0; padding: 24px; overflow-x: auto; font-family: var(--f-mono); font-size: 13px; line-height: 1.65; color: #cfd6cf; }
 .code .copy { position: absolute; top: 12px; right: 12px; }

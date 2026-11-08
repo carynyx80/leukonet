@@ -1,4 +1,6 @@
+import { createHmac, createPrivateKey, createPublicKey } from "node:crypto";
 import { Account, JsonRpcProvider, KeyPair, KeyPairSigner, actions } from "near-api-js";
+import { base58 } from "./units.js";
 import { config, loadKey, withFastnearKey } from "./config.js";
 
 export const YOCTO = 10n ** 24n;
@@ -214,6 +216,29 @@ export async function transfer(account: Account, receiverId: string, amount: big
     landed(account.accountId, res);
     return res.transaction?.hash;
   });
+}
+
+/**
+ * A key derived from the master key and a label: the same label always gives the
+ * same key, so helper accounts survive restarts on hosts with no key files.
+ */
+export function derivedKeyPair(label: string): KeyPair {
+  const secret = loadKey("master").privateKey;
+  const seed = createHmac("sha256", secret).update(`leukonet:${label}`).digest();
+  const priv = createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b657004220420", "hex"), seed]), format: "der", type: "pkcs8" });
+  const pub = createPublicKey(priv).export({ format: "der", type: "spki" }).subarray(-32);
+  return KeyPair.fromString(`ed25519:${base58(new Uint8Array(Buffer.concat([seed, pub])))}` as any);
+}
+
+/** Does this account have this public key? (null: the account does not exist) */
+export async function hasAccessKey(accountId: string, publicKey: string): Promise<boolean | null> {
+  if ((await balanceOf(accountId)) === null) return null;
+  try {
+    await rpc("query", { request_type: "view_access_key", finality: "optimistic", account_id: accountId, public_key: publicKey });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function newKeyPair() {

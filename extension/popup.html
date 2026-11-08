@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Leukonet Guard</title>
+<style>
+  :root { --bg:#0b0c0b; --card:#141714; --line:#2a2f2a; --ink:#eef1ee; --muted:#959d95; --mint:#90f18c; --mint2:#c9f8c6; --red:#ff8a6a; --gold:#f2c66d; }
+  * { box-sizing: border-box; }
+  body { margin:0; width:340px; background:var(--bg); color:var(--ink); font:14px/1.5 Inter, system-ui, sans-serif; }
+  main { padding:16px; display:grid; gap:12px; }
+  header { display:flex; align-items:center; gap:8px; font-weight:700; letter-spacing:-.02em; font-size:16px; }
+  header b { color:var(--mint); }
+  .k { font:500 10.5px ui-monospace, monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--mint); display:flex; gap:8px; align-items:center; }
+  .k::before { content:""; width:7px; height:7px; background:var(--mint); box-shadow:0 0 10px var(--mint); }
+  form { display:flex; gap:8px; padding:6px; border:1px solid var(--line); border-radius:12px; background:var(--card); }
+  input { flex:1; min-width:0; background:transparent; border:0; color:var(--ink); font:14px ui-monospace, monospace; padding:6px 8px; }
+  input:focus { outline:none; }
+  button { border:0; border-radius:9px; padding:8px 14px; font:600 13px Inter, system-ui, sans-serif; cursor:pointer; color:#061006; background:linear-gradient(180deg,var(--mint2),var(--mint)); }
+  button.soft { background:rgba(144,241,140,.1); color:var(--mint); border:1px solid rgba(144,241,140,.35); width:100%; }
+  .out { border-radius:12px; padding:12px; border:1px solid var(--line); background:var(--card); display:grid; gap:4px; }
+  .out b { font-size:17px; letter-spacing:-.02em; }
+  .out p { margin:0; color:var(--muted); font-size:13px; }
+  .out.scam { border-color:var(--red); } .out.scam b { color:var(--red); }
+  .out.impostor, .out.pending { border-color:var(--gold); } .out.impostor b, .out.pending b { color:var(--gold); }
+  .out.clean { border-color:rgba(144,241,140,.5); } .out.clean b { color:var(--mint); }
+  footer { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); }
+  a { color:var(--mint); text-decoration:none; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header><img src="icon.png" width="22" height="22" alt="" /> leuko<b>net</b> guard</header>
+  <span class="k">Check before you pay</span>
+  <form id="f">
+    <input id="q" placeholder="someone.testnet" autocomplete="off" spellcheck="false" aria-label="Account to check" />
+    <button type="submit">Check</button>
+  </form>
+  <div id="out" class="out" hidden role="status"><b id="title"></b><p id="msg"></p></div>
+  <button id="scan" class="soft" type="button">Scan this page for scam accounts</button>
+  <p id="scanned" class="k" hidden></p>
+  <footer><span id="reg"></span><a id="site" target="_blank" rel="noreferrer">Live swarm ↗</a></footer>
+</main>
+<script src="popup.js" type="module"></script>
+</body>
+</html>

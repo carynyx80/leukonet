@@ -7,11 +7,14 @@ export const KEY_DIR = path.join(ROOT, ".keys");
 
 export type Network = "testnet" | "mainnet";
 
+const NETWORK = (process.env.NEAR_NETWORK ?? "testnet") as Network;
+const MAIN = NETWORK === "mainnet";
+
 export const config = {
-  network: (process.env.NEAR_NETWORK ?? "testnet") as Network,
-  rpcUrl: process.env.NEAR_RPC_URL ?? "https://rpc.testnet.fastnear.com",
+  network: NETWORK,
+  rpcUrl: process.env.NEAR_RPC_URL ?? (MAIN ? "https://rpc.mainnet.fastnear.com" : "https://rpc.testnet.fastnear.com"),
   /** FastNear neardata: one request returns a whole block with every transaction. */
-  dataUrl: process.env.NEAR_DATA_URL ?? "https://testnet.neardata.xyz",
+  dataUrl: process.env.NEAR_DATA_URL ?? (MAIN ? "https://mainnet.neardata.xyz" : "https://testnet.neardata.xyz"),
   /** Read-only mainnet RPC for the watch-only mode. */
   mainnetRpcUrl: process.env.NEAR_MAINNET_RPC_URL ?? "https://rpc.mainnet.fastnear.com",
   mainnetDataUrl: process.env.NEAR_MAINNET_DATA_URL ?? "https://mainnet.neardata.xyz",
@@ -23,10 +26,11 @@ export const config = {
   nearAiUrl: process.env.NEAR_AI_URL ?? "https://cloud-api.near.ai/v1",
   nearAiModel: process.env.NEAR_AI_MODEL ?? "anthropic/claude-haiku-5-5",
   /** Expose the attack buttons on the dashboard. */
-  demoControls: (process.env.DEMO_CONTROLS ?? "1") === "1",
+  /** Off by default on mainnet: simulations would spend real NEAR. */
+  demoControls: (process.env.DEMO_CONTROLS ?? (MAIN ? "0" : "1")) === "1",
   /** Run background "normal" traffic so the map is alive and agents have a spending baseline. */
-  normalTraffic: (process.env.NORMAL_TRAFFIC ?? "1") === "1",
-  explorer: process.env.EXPLORER_URL ?? "https://testnet.nearblocks.io",
+  normalTraffic: (process.env.NORMAL_TRAFFIC ?? (MAIN ? "0" : "1")) === "1",
+  explorer: process.env.EXPLORER_URL ?? (MAIN ? "https://nearblocks.io" : "https://testnet.nearblocks.io"),
 };
 
 export interface StoredKey {
