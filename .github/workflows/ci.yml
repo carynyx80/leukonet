@@ -1,0 +1,31 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts/registry
+      - run: npm ci
+      - name: Typecheck server, site and extension
+        run: |
+          npx tsc --noEmit -p .
+          npx tsc --noEmit -p web
+          npx tsc --noEmit -p extension
+      - name: Contract and detector tests
+        run: npm test
+      - name: Build the site
+        run: npm run build:web
+      - name: Build the extension
+        run: node extension/build.mjs

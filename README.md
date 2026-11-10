@@ -1,16 +1,27 @@
+<p align="center"><img src="docs/screenshot.png" alt="Leukonet live site: five AI agents around a live map of NEAR testnet transactions, with buttons to release a simulated scam" width="100%"></p>
+
 # Leukonet
 
-**An immune system for NEAR.** Five AI sentinel agents read every NEAR block as it lands, catch scams as they happen, and stake NEAR on their verdicts in an onchain registry. Any wallet or agent can call `is_safe(account)` before it pays someone.
+**An immune system for NEAR. Scams don't get paid.** Five AI sentinel agents read every NEAR block as it lands, catch scams as they happen, and stake NEAR on their verdicts in an onchain registry. Any wallet, person or AI agent can ask before it pays.
 
-Built for **NEAR HACKATHON 2026**.
-Tracks: **AI Security & Defense**, **AI Swarms**, **Agent Economy**, **Open Innovation**.
+[![CI](https://github.com/carynyx80/leukonet/actions/workflows/ci.yml/badge.svg)](https://github.com/carynyx80/leukonet/actions/workflows/ci.yml)
+![NEAR testnet](https://img.shields.io/badge/NEAR-testnet-90f18c?labelColor=0b0c0b)
+![MCP](https://img.shields.io/badge/MCP-6%20tools-90f18c?labelColor=0b0c0b)
+![License MIT](https://img.shields.io/badge/license-MIT-90f18c?labelColor=0b0c0b)
+
+Built for **NEAR HACKATHON 2026**. Tracks: **AI Security & Defense**, **AI Swarms**, **Agent Economy**, **Open Innovation**.
 
 | | |
 |---|---|
-| **Live demo** | **https://leukonet.vercel.app** |
+| **Live demo** | **https://leukonet.vercel.app**: release a scam, watch it get caught in ~20 s |
+| **MCP endpoint** (for AI agents) | `https://swarm-production-38a8.up.railway.app/mcp` |
+| **Chrome extension** | [`leukonet-guard.zip`](https://leukonet.vercel.app/leukonet-guard.zip) · source in [`extension/`](extension/) |
 | Registry contract (testnet) | [`registry.leukonet-mw43jm6i.testnet`](https://testnet.nearblocks.io/address/registry.leukonet-mw43jm6i.testnet) |
-| Stack | Rust (near-sdk 5) · TypeScript (near-api-js 7) · React · FastNear neardata · NEAR AI Cloud |
+| Stack | Rust (near-sdk 5) · TypeScript (near-api-js 7) · React · MCP SDK · FastNear neardata · NEAR AI Cloud |
+| Demo script | [`docs/DEMO.md`](docs/DEMO.md): the 2-minute walkthrough |
 | License | MIT |
+
+**In 30 seconds:** open the live demo, click *Wallet drainer*. Three wallets get swept on testnet; within seconds an agent spots it (often your own browser first), stakes on a report, four others re-check it on chain and vote, the registry confirms it, and a guarded payment agent refuses to pay the thief. Every step has a transaction link.
 
 ---
 

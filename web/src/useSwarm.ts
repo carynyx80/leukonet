@@ -41,6 +41,8 @@ export interface SwarmState {
   attackRunning: string | null;
   /** Monotonic counter so canvas effects can react to new events. */
   tick: number;
+  /** The swarm could not be reached (yet). */
+  offline?: boolean;
 }
 
 const cap = <T,>(arr: T[], n: number) => (arr.length > n ? arr.slice(arr.length - n) : arr);
@@ -109,7 +111,21 @@ export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void, (e
       }
     };
 
-    const boot = async () => {
+    // The snapshot is retried until it loads, and its meta (funds, running attack,
+    // watcher count) is refreshed every half minute so status notices never go stale.
+    let loaded = false;
+    let fails = 0;
+    const refreshMeta = async () => {
+      try {
+        const snap = await (await fetch(`${API}/api/state`)).json();
+        if (snap.meta?.watchers) setWatchers(snap.meta.watchers.count);
+        set((p) => ({ ...p, meta: snap.meta, offline: false }));
+      } catch {
+        /* keep the last meta */
+      }
+    };
+    const metaTimer = setInterval(() => loaded && void refreshMeta(), 30_000);
+    const load = async (): Promise<void> => {
       try {
         const res = await fetch(`${API}/api/state`);
         const snap = await res.json();
@@ -126,11 +142,17 @@ export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void, (e
             attackRunning: snap.meta?.attackRunning ?? null,
           };
           for (const e of snap.events ?? []) next = apply(next, e);
-          return next;
+          return { ...next, offline: false };
         });
+        loaded = true;
       } catch {
-        /* server not up yet; EventSource will retry */
+        fails++;
+        if (fails >= 2) set((p) => ({ ...p, offline: true }));
+        if (!stopped) setTimeout(() => void load(), Math.min(2000 * fails, 15_000));
       }
+    };
+    const boot = async () => {
+      await load();
       if (stopped) return;
       es = new EventSource(`${API}/api/events`);
       es.onopen = () => set((p) => ({ ...p, connected: true }));
@@ -150,6 +172,7 @@ export function useSwarm(): [SwarmState, (fn: (e: Ev) => void) => () => void, (e
     void boot();
     return () => {
       stopped = true;
+      clearInterval(metaTimer);
       es?.close();
     };
   }, []);

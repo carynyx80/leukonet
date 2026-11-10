@@ -205,6 +205,7 @@ export function App() {
 
   return (
     <>
+      <a className="skip" href="#main">Skip to content</a>
       <nav className="nav">
         <a className="brand" href="#top" aria-label="Leukonet home">
           <Logo />
@@ -273,7 +274,7 @@ export function App() {
         </a>
       </div>
 
-      <main className="page">
+      <main className="page" id="main" tabIndex={-1}>
         <section className="section" id="swarm">
           <div className="section-h">
             <span className="eyebrow">The swarm</span>
@@ -331,21 +332,40 @@ export function App() {
         </div>
 
         <footer className="footer">
-          <span className="brand small">
-            <Logo />
-            <span>
-              leuko<b>net</b>
+          <div className="foot-brand">
+            <span className="brand small">
+              <Logo />
+              <span>
+                leuko<b>net</b>
+              </span>
             </span>
-          </span>
-          <span>Built for NEAR HACKATHON 2026 · runs on NEAR testnet</span>
-          {meta && (
-            <a href={accUrl(meta.registry)} target="_blank" rel="noreferrer">
-              registry contract ↗
-            </a>
-          )}
-          <a href="https://github.com/carynyx80/leukonet" target="_blank" rel="noreferrer">
-            source code ↗
-          </a>
+            <p>An immune system for NEAR. Built for NEAR HACKATHON 2026; runs on NEAR testnet.</p>
+          </div>
+          <nav className="foot-col" aria-label="Product">
+            <b>Product</b>
+            <a href="#top">Live map</a>
+            <a href="#check">Check an account</a>
+            <a href="#radar">Mainnet radar</a>
+            <a href="#registry">Registry</a>
+          </nav>
+          <nav className="foot-col" aria-label="Build with it">
+            <b>Build</b>
+            <a href="#developers">is_safe API</a>
+            <a href="#developers">MCP server</a>
+            <a href="/leukonet-guard.zip" download>Chrome extension</a>
+            <a href="#developers">Run a sentinel</a>
+          </nav>
+          <nav className="foot-col" aria-label="Source">
+            <b>Source</b>
+            <a href="https://github.com/carynyx80/leukonet" target="_blank" rel="noreferrer">GitHub ↗</a>
+            <a href="https://github.com/carynyx80/leukonet#readme" target="_blank" rel="noreferrer">README ↗</a>
+            {meta && (
+              <a href={accUrl(meta.registry)} target="_blank" rel="noreferrer">
+                Registry contract ↗
+              </a>
+            )}
+            <a href="#faq">Questions</a>
+          </nav>
         </footer>
       </main>
 
@@ -439,8 +459,19 @@ function Story({
               ))}
             </div>
           </>
-        ) : (
+        ) : meta ? (
           <p className="muted">Simulations are switched off on this server.</p>
+        ) : s.offline ? (
+          <p className="lagging" role="status">
+            Can't reach the swarm right now. Retrying… The mainnet radar and name check below still work, straight from your browser.
+          </p>
+        ) : (
+          <div className="loading" role="status" aria-label="Connecting to the swarm">
+            <span />
+            <span />
+            <span />
+            <small className="mono">Connecting to the swarm…</small>
+          </div>
         )}
         {err && <p className="err">{err}</p>}
       </div>
